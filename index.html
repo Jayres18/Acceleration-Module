@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rocket Launch Challenge - Acceleration Module</title>
+    <link rel="stylesheet" href="./styles/main.css">
+</head>
+<body>
+    <div id="app">
+        <div id="ui-container">
+            <div id="hud">
+                <div class="hud-item">Velocity: <span id="velocity-val">0</span> m/s</div>
+                <div class="hud-item">Acceleration: <span id="accel-val">0</span> m/s²</div>
+                <div class="hud-item">Altitude: <span id="altitude-val">0</span> m</div>
+                <div class="hud-item">Fuel: <span id="fuel-val">100</span>%</div>
+            </div>
+            
+            <div id="controls" class="panel">
+                <h3>Launch Controls</h3>
+                <div class="control-group">
+                    <label>Thrust: <span id="thrust-label">50</span> N</label>
+                    <input type="range" id="thrust-slider" min="0" max="200" value="50">
+                </div>
+                <div class="control-group">
+                    <label>Mass: <span id="mass-label">10</span> kg</label>
+                    <input type="range" id="mass-slider" min="1" max="50" value="10">
+                </div>
+                <div class="control-group">
+                    <label>Time Scale: <span id="time-label">1.0</span>x</label>
+                    <input type="range" id="time-slider" min="0.1" max="2.0" step="0.1" value="1.0">
+                </div>
+                <button id="launch-btn">LAUNCH</button>
+                <button id="reset-btn">RESET</button>
+            </div>
+
+            <div id="info-panel" class="panel">
+                <h3>Learning Module: Acceleration</h3>
+                <p id="instruction-text">Adjust the thrust and mass, then launch the rocket to observe acceleration.</p>
+                <div id="graph-container">
+                    <canvas id="physics-graph"></canvas>
+                </div>
+                <div id="quiz-container" style="display:none; margin-top:10px;">
+                    <hr>
+                    <p><b>Quick Quiz:</b> If you increase the mass but keep thrust the same, what happens to acceleration?</p>
+                    <button class="quiz-opt" data-correct="false">Increases</button>
+                    <button class="quiz-opt" data-correct="true">Decreases</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script type="module" src="./main.js"></script>
+</body>
+</html>
