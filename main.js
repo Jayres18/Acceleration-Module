@@ -5,75 +5,82 @@ import { UIManager } from './ui/UIManager.js';
 import { XRHandler } from './xr/XRHandler.js';
 import { ParticleSystem } from './scripts/ParticleSystem.js';
 
+
 class RocketApp {
     constructor() {
         this.physics = new PhysicsEngine();
-        this.scene = new MainScene();
-        this.xr = new XRHandler(this.scene.renderer, this.scene.scene);
+        this.scene   = new MainScene();
         this.particles = new ParticleSystem(this.scene.scene);
-        
-        this.ui = new UIManager({
-            onThrustChange: (val) => this.physics.setParameters(this.physics.mass, val),
-            onMassChange: (val) => this.physics.setParameters(val, this.physics.thrust),
-            onTimeChange: (val) => this.timeScale = val,
-            onLaunch: () => this.physics.launch(),
+
+        const callbacks = {
+            onThrustChange: val => this.physics.setParameters(this.physics.mass, val),
+            onMassChange:   val => this.physics.setParameters(val, this.physics.thrust),
+            onTimeChange:   val => { this.timeScale = val; },
+            onLaunch: () => {
+                this.physics.launch();
+                this.ui.launchBtn.disabled = true;
+            },
             onReset: () => {
                 this.physics.reset();
                 this.ui.resetUI();
-                this.scene.updateRocket(0);
+                this.scene.updateRocket(0, false);
                 this.particles.reset();
-            }
-        });
+                // XR panel reset is handled inside VRControlPanel's reset button callback
+            },
+        };
 
-        this.clock = new THREE.Clock();
+        this.ui  = new UIManager(callbacks);
+        this.xr  = new XRHandler(this.scene.renderer, this.scene.scene, callbacks);
+
+        this.clock     = new THREE.Clock();
         this.timeScale = 1.0;
-        this.initVisualizers();
-        
-        // Initial setup
+
+        this._initVisualizers();
         this.physics.setParameters(10, 50);
-        
-        this.scene.render(() => this.animate());
+        this.scene.render(() => this._animate());
     }
 
-    initVisualizers() {
-        // Force vector visualization
-        const arrowDir = new THREE.Vector3(0, 1, 0);
-        const arrowOrigin = new THREE.Vector3(0, 0, 0);
-        this.thrustArrow = new THREE.ArrowHelper(arrowDir, arrowOrigin, 0, 0x00ff00);
-        this.weightArrow = new THREE.ArrowHelper(new THREE.Vector3(0, -1, 0), arrowOrigin, 0, 0xff0000);
-        
+    _initVisualizers() {
+        const up   = new THREE.Vector3(0, 1, 0);
+        const down = new THREE.Vector3(0, -1, 0);
+        const origin = new THREE.Vector3(0, 0, 0);
+
+        this.thrustArrow = new THREE.ArrowHelper(up,   origin, 0, 0x00ff44);
+        this.weightArrow = new THREE.ArrowHelper(down, origin, 0, 0xff3300);
+
         this.scene.rocketGroup.add(this.thrustArrow);
         this.scene.rocketGroup.add(this.weightArrow);
     }
 
-    animate() {
-        const deltaTime = Math.min(this.clock.getDelta(), 0.1) * this.timeScale;
-        
-        this.physics.update(deltaTime);
-        const state = this.physics.getState();
-        
-        this.scene.updateRocket(state.altitude);
-        this.ui.updateHUD(state);
-        this.updateVisualizers(state);
+    _animate() {
+        const delta = Math.min(this.clock.getDelta(), 0.1) * this.timeScale;
 
-        // Particle update
+        this.physics.update(delta);
+        const state = this.physics.getState();
+
+        const isThrusting = state.isLaunched && state.fuel > 0;
+        this.scene.updateRocket(state.altitude, isThrusting);
+        this.ui.updateHUD(state);
+        this.xr.updateHUD(state);
+        this.xr.update();
+        this._updateVisualizers(state);
+
         const rocketPos = this.scene.rocketGroup.position.clone();
-        this.particles.update(deltaTime, state.isLaunched && state.fuel > 0, rocketPos);
-        
+        this.particles.update(delta, isThrusting, rocketPos);
+
         this.scene.renderer.render(this.scene.scene, this.scene.camera);
     }
 
-    updateVisualizers(state) {
-        if (state.isLaunched && this.physics.fuel > 0) {
-            this.thrustArrow.setLength(this.physics.thrust / 50);
+    _updateVisualizers(state) {
+        if (state.isLaunched && state.fuel > 0) {
+            this.thrustArrow.setLength(this.physics.thrust / 100);
             this.thrustArrow.visible = true;
         } else {
             this.thrustArrow.visible = false;
         }
-        
-        this.weightArrow.setLength((this.physics.mass * 9.81) / 50);
-        this.weightArrow.position.y = 1.5; // Center of rocket
-        this.thrustArrow.position.y = 0; // Bottom of rocket
+        this.weightArrow.setLength((this.physics.mass * 9.81) / 100);
+        this.weightArrow.position.y = 0.75; // rocket body centre
+        this.thrustArrow.position.y = 0;    // engine bell bottom
     }
 }
 
