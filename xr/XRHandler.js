@@ -4,6 +4,7 @@ import { XRHandModelFactory } from 'three/examples/jsm/webxr/XRHandModelFactory.
 import { VRControlPanel } from './VRControlPanel.js';
 import { VRHUDPanel } from './VRHUDPanel.js';
 import { VRGraphPanel } from './VRGraphPanel.js';
+import { VRInstructionPanel } from './VRInstructionPanel.js';
 
 export class XRHandler {
     constructor(renderer, scene, callbacks) {
@@ -15,6 +16,7 @@ export class XRHandler {
         this._tempMat = new THREE.Matrix4();
         this._panels = [];
         this._activeCtrl = null;   // controller currently holding select
+        this._instructionVisible = false;
 
         this._handModelFactory = new XRHandModelFactory();
 
@@ -95,6 +97,12 @@ export class XRHandler {
         this.graphPanel.mesh.rotation.y = 0.15;
         this.scene.add(this.graphPanel.mesh);
 
+        // Instruction panel — centered, closer, higher than other panels; NOT in _panels[]
+        this.instructionPanel = new VRInstructionPanel();
+        this.instructionPanel.mesh.position.set(0, -0.25, -1.2);
+        this.instructionPanel.mesh.visible = false;
+        this.scene.add(this.instructionPanel.mesh);
+
         this._panels = [this.controlPanel, this.hudPanel, this.graphPanel];
         this._panelMeshes = this._panels.map(p => p.mesh);
     }
@@ -102,15 +110,24 @@ export class XRHandler {
     _listenForSession() {
         this.renderer.xr.addEventListener('sessionstart', () => {
             document.getElementById('ui-container').style.display = 'none';
+            this.instructionPanel.mesh.visible = true;
+            this._instructionVisible = true;
         });
         this.renderer.xr.addEventListener('sessionend', () => {
             document.getElementById('ui-container').style.display = '';
+            this.instructionPanel.mesh.visible = false;
+            this._instructionVisible = false;
         });
     }
 
     // ── Controller events ──────────────────────────────────────────────
 
     _onSelectStart(e) {
+        if (this._instructionVisible) {
+            this.instructionPanel.mesh.visible = false;
+            this._instructionVisible = false;
+            return;  // consume the pinch; no panel interaction fires
+        }
         this._activeCtrl = e.target;
         const hit = this._castRay(this._activeCtrl);
         if (hit) hit.panel.onSelectStart(hit.uv);
