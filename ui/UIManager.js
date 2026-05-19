@@ -27,6 +27,16 @@ export class UIManager {
         
         this.graphCanvas = document.getElementById('physics-graph');
         this.graphCtx = this.graphCanvas.getContext('2d');
+
+        this.resultPanel = document.getElementById('result-panel');
+        this.resLaunchForce  = document.getElementById('res-launch-force');
+        this.resRocketMass   = document.getElementById('res-rocket-mass');
+        this.resMaxVelocity  = document.getElementById('res-max-velocity');
+        this.resAvgAccel     = document.getElementById('res-avg-accel');
+        this.resPeakAltitude = document.getElementById('res-peak-altitude');
+        this.resFlightTime   = document.getElementById('res-flight-time');
+        this.resDistance     = document.getElementById('res-distance');
+        this.resultCloseBtn  = document.getElementById('result-close-btn');
     }
 
     initEvents() {
@@ -54,6 +64,11 @@ export class UIManager {
         });
 
         this.resetBtn.addEventListener('click', () => {
+            this.callbacks.onReset();
+            this.launchBtn.disabled = false;
+        });
+
+        this.resultCloseBtn.addEventListener('click', () => {
             this.callbacks.onReset();
             this.launchBtn.disabled = false;
         });
@@ -119,11 +134,27 @@ export class UIManager {
         ctx.fillText('Accel vs Time', 5, 12);
     }
     
+    showResults(results) {
+        this.resLaunchForce.textContent  = `${results.launchForce.toFixed(1)} N`;
+        this.resRocketMass.textContent   = `${results.rocketMass.toFixed(1)} kg`;
+        this.resMaxVelocity.textContent  = `${results.maxVelocity.toFixed(2)} m/s`;
+        this.resAvgAccel.textContent     = `${results.avgAcceleration.toFixed(2)} m/s²`;
+        this.resPeakAltitude.textContent = `${results.peakAltitude.toFixed(2)} m`;
+        this.resFlightTime.textContent   = `${results.flightTime.toFixed(2)} s`;
+        this.resDistance.textContent     = `${results.distanceTraveled.toFixed(2)} m`;
+        this.resultPanel.classList.add('visible');
+    }
+
+    hideResults() {
+        this.resultPanel.classList.remove('visible');
+    }
+
     resetUI() {
         this.graphData = [];
         this.drawGraph();
         this.launchBtn.disabled = false;
         this.quizContainer.style.display = 'none';
         this.quizOpts.forEach(opt => opt.style.background = '#00f');
+        this.hideResults();
     }
 }

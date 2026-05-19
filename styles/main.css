@@ -103,3 +103,74 @@ canvas#physics-graph {
     width: 100%;
     height: 100%;
 }
+
+/* ── Result Panel ─────────────────────────────────────────────────── */
+
+#result-panel {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+}
+
+#result-panel.visible {
+    display: flex;
+}
+
+.result-content {
+    background: rgba(4, 8, 30, 0.97);
+    border: 2px solid #2255ee;
+    border-radius: 14px;
+    padding: 28px 36px;
+    min-width: 340px;
+    max-width: 420px;
+    width: 90%;
+    box-shadow: 0 0 40px rgba(34, 85, 238, 0.4);
+}
+
+.result-content h2 {
+    margin: 0 0 20px;
+    color: #4499ff;
+    font-size: 1.1rem;
+    text-align: center;
+    letter-spacing: 0.12em;
+}
+
+.result-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 22px;
+}
+
+.result-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    border-bottom: 1px solid rgba(34, 85, 238, 0.2);
+    padding-bottom: 8px;
+}
+
+.result-label {
+    color: #8899cc;
+    font-size: 0.85rem;
+}
+
+.result-value {
+    color: #ffffff;
+    font-size: 1rem;
+    font-weight: bold;
+    font-family: 'Courier New', monospace;
+}
+
+#result-close-btn {
+    background: #1144cc;
+    margin-top: 0;
+}
+
+#result-close-btn:hover {
+    background: #2277ff;
+}

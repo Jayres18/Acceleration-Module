@@ -5,6 +5,7 @@ import { VRControlPanel } from './VRControlPanel.js';
 import { VRHUDPanel } from './VRHUDPanel.js';
 import { VRGraphPanel } from './VRGraphPanel.js';
 import { VRInstructionPanel } from './VRInstructionPanel.js';
+import { VRResultPanel } from './VRResultPanel.js';
 
 export class XRHandler {
     constructor(renderer, scene, callbacks) {
@@ -103,6 +104,12 @@ export class XRHandler {
         this.instructionPanel.mesh.visible = false;
         this.scene.add(this.instructionPanel.mesh);
 
+        // Result panel — centered, in front of the user; hidden until flight ends
+        this.resultPanel = new VRResultPanel(() => this._onResultClose());
+        this.resultPanel.mesh.position.set(0, -0.2, -1.3);
+        this.resultPanel.mesh.visible = false;
+        this.scene.add(this.resultPanel.mesh);
+
         this._panels = [this.controlPanel, this.hudPanel, this.graphPanel];
         this._panelMeshes = this._panels.map(p => p.mesh);
     }
@@ -200,9 +207,27 @@ export class XRHandler {
         this.graphPanel.pushData(state);
     }
 
+    showResults(results) {
+        this.resultPanel.setResults(results);
+        this.resultPanel.mesh.visible = true;
+        this._panels = [this.controlPanel, this.hudPanel, this.graphPanel, this.resultPanel];
+        this._panelMeshes = this._panels.map(p => p.mesh);
+    }
+
+    hideResults() {
+        this.resultPanel.mesh.visible = false;
+        this._panels = [this.controlPanel, this.hudPanel, this.graphPanel];
+        this._panelMeshes = this._panels.map(p => p.mesh);
+    }
+
+    _onResultClose() {
+        this.callbacks.onReset();
+    }
+
     resetPanels() {
         this.graphPanel.reset();
         this.controlPanel.setDisabled('launch', false);
         this.controlPanel.render();
+        this.hideResults();
     }
 }

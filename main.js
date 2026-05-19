@@ -25,15 +25,17 @@ class RocketApp {
                 this.ui.resetUI();
                 this.scene.updateRocket(0, false);
                 this.particles.reset();
-                // XR panel reset is handled inside VRControlPanel's reset button callback
+                this._wasLaunched = false;
+                this.xr.resetPanels();
             },
         };
 
         this.ui  = new UIManager(callbacks);
         this.xr  = new XRHandler(this.scene.renderer, this.scene.scene, callbacks);
 
-        this.clock     = new THREE.Clock();
-        this.timeScale = 1.0;
+        this.clock        = new THREE.Clock();
+        this.timeScale    = 1.0;
+        this._wasLaunched = false;
 
         this._initVisualizers();
         this.physics.setParameters(10, 50);
@@ -55,8 +57,17 @@ class RocketApp {
     _animate() {
         const delta = Math.min(this.clock.getDelta(), 0.1) * this.timeScale;
 
+        const wasLaunched = this._wasLaunched;
         this.physics.update(delta);
         const state = this.physics.getState();
+        this._wasLaunched = state.isLaunched;
+
+        // Detect flight end: launched → landed
+        if (wasLaunched && !state.isLaunched) {
+            const results = this.physics.getResults();
+            this.ui.showResults(results);
+            this.xr.showResults(results);
+        }
 
         const isThrusting = state.isLaunched && state.fuel > 0;
         this.scene.updateRocket(state.altitude, isThrusting);
