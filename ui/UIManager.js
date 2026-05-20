@@ -1,42 +1,45 @@
 export class UIManager {
-    constructor(callbacks) {
+    constructor(callbacks, challengeManager = null) {
         this.callbacks = callbacks;
+        this.challengeManager = challengeManager;
         this.initElements();
         this.initEvents();
         this.initGraph();
+        this._buildChallengeCard();
     }
 
     initElements() {
         this.velocityVal = document.getElementById('velocity-val');
-        this.accelVal = document.getElementById('accel-val');
+        this.accelVal    = document.getElementById('accel-val');
         this.altitudeVal = document.getElementById('altitude-val');
-        this.fuelVal = document.getElementById('fuel-val');
-        
-        this.thrustSlider = document.getElementById('thrust-slider');
-        this.thrustLabel = document.getElementById('thrust-label');
-        this.massSlider = document.getElementById('mass-slider');
-        this.massLabel = document.getElementById('mass-label');
-        this.timeSlider = document.getElementById('time-slider');
-        this.timeLabel = document.getElementById('time-label');
-        
-        this.launchBtn = document.getElementById('launch-btn');
-        this.resetBtn = document.getElementById('reset-btn');
-        
-        this.quizContainer = document.getElementById('quiz-container');
-        this.quizOpts = document.querySelectorAll('.quiz-opt');
-        
-        this.graphCanvas = document.getElementById('physics-graph');
-        this.graphCtx = this.graphCanvas.getContext('2d');
+        this.fuelVal     = document.getElementById('fuel-val');
 
-        this.resultPanel = document.getElementById('result-panel');
-        this.resLaunchForce  = document.getElementById('res-launch-force');
-        this.resRocketMass   = document.getElementById('res-rocket-mass');
-        this.resMaxVelocity  = document.getElementById('res-max-velocity');
-        this.resAvgAccel     = document.getElementById('res-avg-accel');
-        this.resPeakAltitude = document.getElementById('res-peak-altitude');
-        this.resFlightTime   = document.getElementById('res-flight-time');
-        this.resDistance     = document.getElementById('res-distance');
-        this.resultCloseBtn  = document.getElementById('result-close-btn');
+        this.thrustSlider = document.getElementById('thrust-slider');
+        this.thrustLabel  = document.getElementById('thrust-label');
+        this.massSlider   = document.getElementById('mass-slider');
+        this.massLabel    = document.getElementById('mass-label');
+        this.timeSlider   = document.getElementById('time-slider');
+        this.timeLabel    = document.getElementById('time-label');
+
+        this.launchBtn = document.getElementById('launch-btn');
+        this.resetBtn  = document.getElementById('reset-btn');
+
+        this.quizContainer = document.getElementById('quiz-container');
+        this.quizOpts      = document.querySelectorAll('.quiz-opt');
+
+        this.graphCanvas = document.getElementById('physics-graph');
+        this.graphCtx    = this.graphCanvas.getContext('2d');
+
+        this.resultPanel      = document.getElementById('result-panel');
+        this.resLaunchForce   = document.getElementById('res-launch-force');
+        this.resRocketMass    = document.getElementById('res-rocket-mass');
+        this.resMaxVelocity   = document.getElementById('res-max-velocity');
+        this.resAvgAccel      = document.getElementById('res-avg-accel');
+        this.resPeakAltitude  = document.getElementById('res-peak-altitude');
+        this.resFlightTime    = document.getElementById('res-flight-time');
+        this.resDistance      = document.getElementById('res-distance');
+        this.resultCloseBtn   = document.getElementById('result-close-btn');
+        this.challengeResults = document.getElementById('challenge-results');
     }
 
     initEvents() {
@@ -92,49 +95,69 @@ export class UIManager {
         this.maxDataPoints = 100;
     }
 
+    _buildChallengeCard() {
+        if (!this.challengeManager?.isActive) return;
+
+        const card = document.createElement('div');
+        card.id = 'challenge-card';
+        card.className = 'panel';
+
+        const targets = this.challengeManager.targets
+            .map(t => `<div class="challenge-target">≥ ${t.value.toFixed(t.decimals)} ${t.unit} — ${t.label}</div>`)
+            .join('');
+
+        card.innerHTML = `
+            <h3>Challenge Targets</h3>
+            ${targets}
+            <div id="attempt-count">Attempt: 0</div>
+        `;
+
+        const controls = document.getElementById('controls');
+        controls.parentNode.insertBefore(card, controls);
+
+        this.challengeCard  = card;
+        this.attemptCountEl = card.querySelector('#attempt-count');
+    }
+
     updateHUD(state) {
         this.velocityVal.textContent = state.velocity.toFixed(2);
-        this.accelVal.textContent = state.acceleration.toFixed(2);
+        this.accelVal.textContent    = state.acceleration.toFixed(2);
         this.altitudeVal.textContent = state.altitude.toFixed(2);
-        this.fuelVal.textContent = state.fuel.toFixed(1);
-        
+        this.fuelVal.textContent     = state.fuel.toFixed(1);
+
         if (state.isLaunched) {
             this.quizContainer.style.display = 'block';
             this.graphData.push(state.acceleration);
-            if (this.graphData.length > this.maxDataPoints) {
-                this.graphData.shift();
-            }
+            if (this.graphData.length > this.maxDataPoints) this.graphData.shift();
             this.drawGraph();
         }
     }
 
     drawGraph() {
-        const ctx = this.graphCtx;
-        const width = this.graphCanvas.width;
+        const ctx    = this.graphCtx;
+        const width  = this.graphCanvas.width;
         const height = this.graphCanvas.height;
-        
+
         ctx.clearRect(0, 0, width, height);
         ctx.strokeStyle = '#00f';
-        ctx.lineWidth = 2;
+        ctx.lineWidth   = 2;
         ctx.beginPath();
-        
+
         const step = width / this.maxDataPoints;
         for (let i = 0; i < this.graphData.length; i++) {
             const x = i * step;
-            // Map acceleration range [-10, 20] to height [height, 0]
             const y = height - ((this.graphData[i] + 10) / 30) * height;
             if (i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
+            else         ctx.lineTo(x, y);
         }
         ctx.stroke();
-        
-        // Label
+
         ctx.fillStyle = '#fff';
-        ctx.font = '10px Arial';
+        ctx.font      = '10px Arial';
         ctx.fillText('Accel vs Time', 5, 12);
     }
-    
-    showResults(results) {
+
+    showResults(results, challengeScore = null) {
         this.resLaunchForce.textContent  = `${results.launchForce.toFixed(1)} N`;
         this.resRocketMass.textContent   = `${results.rocketMass.toFixed(1)} kg`;
         this.resMaxVelocity.textContent  = `${results.maxVelocity.toFixed(2)} m/s`;
@@ -142,7 +165,34 @@ export class UIManager {
         this.resPeakAltitude.textContent = `${results.peakAltitude.toFixed(2)} m`;
         this.resFlightTime.textContent   = `${results.flightTime.toFixed(2)} s`;
         this.resDistance.textContent     = `${results.distanceTraveled.toFixed(2)} m`;
+
+        if (challengeScore) this._renderChallengeScore(challengeScore);
+
         this.resultPanel.classList.add('visible');
+    }
+
+    _renderChallengeScore(challengeScore) {
+        const rows = challengeScore.map(r => {
+            const icon  = r.passed ? '✓' : '✗';
+            const sign  = r.delta >= 0 ? '+' : '';
+            const delta = `(${sign}${r.delta.toFixed(r.decimals)})`;
+            return `
+                <div class="challenge-score-row ${r.passed ? 'passed' : 'failed'}">
+                    <span class="challenge-icon">${icon}</span>
+                    <span class="challenge-score-label">${r.label}</span>
+                    <span class="challenge-score-values">
+                        ${r.actual.toFixed(r.decimals)} / ${r.target.toFixed(r.decimals)} ${r.unit}
+                        <span class="challenge-delta">${delta}</span>
+                    </span>
+                </div>`;
+        }).join('');
+
+        this.challengeResults.innerHTML = `
+            <hr class="challenge-divider">
+            <p class="challenge-score-title">Challenge Score</p>
+            <div class="challenge-score-grid">${rows}</div>
+            <div class="attempt-display">Attempt ${this.challengeManager.attemptCount}</div>
+        `;
     }
 
     hideResults() {
@@ -156,5 +206,9 @@ export class UIManager {
         this.quizContainer.style.display = 'none';
         this.quizOpts.forEach(opt => opt.style.background = '#00f');
         this.hideResults();
+        this.challengeResults.innerHTML = '';
+        if (this.attemptCountEl && this.challengeManager) {
+            this.attemptCountEl.textContent = `Attempt: ${this.challengeManager.attemptCount}`;
+        }
     }
 }

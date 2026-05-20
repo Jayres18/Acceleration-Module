@@ -8,10 +8,11 @@ import { VRInstructionPanel } from './VRInstructionPanel.js';
 import { VRResultPanel } from './VRResultPanel.js';
 
 export class XRHandler {
-    constructor(renderer, scene, callbacks) {
-        this.renderer = renderer;
-        this.scene = scene;
-        this.callbacks = callbacks;
+    constructor(renderer, scene, callbacks, challengeManager = null) {
+        this.renderer          = renderer;
+        this.scene             = scene;
+        this.callbacks         = callbacks;
+        this._challengeManager = challengeManager;
 
         this._raycaster = new THREE.Raycaster();
         this._tempMat = new THREE.Matrix4();
@@ -88,7 +89,7 @@ export class XRHandler {
         this.scene.add(this.controlPanel.mesh);
 
         // HUD — straight ahead, slightly above eye level
-        this.hudPanel = new VRHUDPanel();
+        this.hudPanel = new VRHUDPanel(this._challengeManager);
         this.hudPanel.mesh.position.set(0, -0.5, -1.5);
         this.scene.add(this.hudPanel.mesh);
 
@@ -105,7 +106,7 @@ export class XRHandler {
         this.scene.add(this.instructionPanel.mesh);
 
         // Result panel — centered, in front of the user; hidden until flight ends
-        this.resultPanel = new VRResultPanel(() => this._onResultClose());
+        this.resultPanel = new VRResultPanel(() => this._onResultClose(), this._challengeManager);
         this.resultPanel.mesh.position.set(0, -0.2, -1.3);
         this.resultPanel.mesh.visible = false;
         this.scene.add(this.resultPanel.mesh);
@@ -207,8 +208,8 @@ export class XRHandler {
         this.graphPanel.pushData(state);
     }
 
-    showResults(results) {
-        this.resultPanel.setResults(results);
+    showResults(results, challengeScore = null, attemptCount = 0) {
+        this.resultPanel.setResults(results, challengeScore, attemptCount);
         this.resultPanel.mesh.visible = true;
         this._panels = [this.controlPanel, this.hudPanel, this.graphPanel, this.resultPanel];
         this._panelMeshes = this._panels.map(p => p.mesh);

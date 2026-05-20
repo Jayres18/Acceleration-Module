@@ -4,13 +4,15 @@ import { PhysicsEngine } from './physics/PhysicsEngine.js';
 import { UIManager } from './ui/UIManager.js';
 import { XRHandler } from './xr/XRHandler.js';
 import { ParticleSystem } from './scripts/ParticleSystem.js';
+import { ChallengeManager } from './ChallengeManager.js';
 
 
 class RocketApp {
     constructor() {
-        this.physics = new PhysicsEngine();
-        this.scene   = new MainScene();
+        this.physics   = new PhysicsEngine();
+        this.scene     = new MainScene();
         this.particles = new ParticleSystem(this.scene.scene);
+        this.challenge = new ChallengeManager();
 
         const callbacks = {
             onThrustChange: val => this.physics.setParameters(this.physics.mass, val),
@@ -27,11 +29,12 @@ class RocketApp {
                 this.particles.reset();
                 this._wasLaunched = false;
                 this.xr.resetPanels();
+                this.challenge.reset();
             },
         };
 
-        this.ui  = new UIManager(callbacks);
-        this.xr  = new XRHandler(this.scene.renderer, this.scene.scene, callbacks);
+        this.ui  = new UIManager(callbacks, this.challenge);
+        this.xr  = new XRHandler(this.scene.renderer, this.scene.scene, callbacks, this.challenge);
 
         this.clock        = new THREE.Clock();
         this.timeScale    = 1.0;
@@ -64,9 +67,12 @@ class RocketApp {
 
         // Detect flight end: launched → landed
         if (wasLaunched && !state.isLaunched) {
-            const results = this.physics.getResults();
-            this.ui.showResults(results);
-            this.xr.showResults(results);
+            const results        = this.physics.getResults();
+            const challengeScore = this.challenge.isActive
+                ? this.challenge.evaluate(results)
+                : null;
+            this.ui.showResults(results, challengeScore);
+            this.xr.showResults(results, challengeScore, this.challenge.attemptCount);
         }
 
         const isThrusting = state.isLaunched && state.fuel > 0;

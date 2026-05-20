@@ -174,3 +174,91 @@ canvas#physics-graph {
 #result-close-btn:hover {
     background: #2277ff;
 }
+
+/* ── Challenge Card ─────────────────────────────────────────────── */
+
+#challenge-card {
+    border-color: #ffaa22;
+    align-self: flex-end;
+    margin-bottom: 10px;
+}
+
+#challenge-card h3 {
+    color: #ffaa22;
+}
+
+.challenge-target {
+    font-size: 0.85rem;
+    color: #ffcc66;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(255, 170, 34, 0.2);
+}
+
+#attempt-count {
+    font-size: 0.8rem;
+    color: #888899;
+    margin-top: 8px;
+}
+
+/* ── Challenge Score in Result Panel ───────────────────────────── */
+
+#challenge-results {
+    margin-top: 16px;
+}
+
+.challenge-divider {
+    border: none;
+    border-top: 1px solid rgba(255, 170, 34, 0.3);
+    margin: 0 0 10px;
+}
+
+.challenge-score-title {
+    color: #ffaa22;
+    text-align: center;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin: 0 0 10px;
+}
+
+.challenge-score-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.challenge-score-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(34, 85, 238, 0.15);
+    font-size: 0.82rem;
+}
+
+.challenge-score-row.passed .challenge-icon { color: #44ff88; font-weight: bold; }
+.challenge-score-row.failed .challenge-icon { color: #ff5544; font-weight: bold; }
+
+.challenge-score-label {
+    flex: 1;
+    color: #8899cc;
+}
+
+.challenge-score-values {
+    color: #ffffff;
+    font-family: 'Courier New', monospace;
+    font-size: 0.8rem;
+}
+
+.challenge-delta {
+    color: #6677aa;
+    font-size: 0.75rem;
+}
+
+.attempt-display {
+    text-align: center;
+    color: #6677aa;
+    font-size: 0.8rem;
+    margin-top: 4px;
+}
