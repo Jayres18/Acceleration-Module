@@ -72,6 +72,8 @@ export class UIManager {
         });
 
         this.resultCloseBtn.addEventListener('click', () => {
+            // In exam mode, navigation is handled only by the Next/Submit buttons
+            if (this.challengeManager?.isExamMode) return;
             this.callbacks.onReset();
             this.launchBtn.disabled = false;
         });
@@ -102,21 +104,32 @@ export class UIManager {
         card.id = 'challenge-card';
         card.className = 'panel';
 
+        const isExam = this.challengeManager.isExamMode;
+        const progressHTML = isExam
+            ? (() => {
+                  const { current, total } = this.challengeManager.questionProgress;
+                  return `<div id="question-progress">Question ${current} of ${total}</div>`;
+              })()
+            : '';
+
         const targets = this.challengeManager.targets
             .map(t => `<div class="challenge-target">≥ ${t.value.toFixed(t.decimals)} ${t.unit} — ${t.label}</div>`)
             .join('');
 
         card.innerHTML = `
             <h3>Challenge Targets</h3>
-            ${targets}
+            ${progressHTML}
+            <div id="challenge-targets-list">${targets}</div>
             <div id="attempt-count">Attempt: 0</div>
         `;
 
         const controls = document.getElementById('controls');
         controls.parentNode.insertBefore(card, controls);
 
-        this.challengeCard  = card;
-        this.attemptCountEl = card.querySelector('#attempt-count');
+        this.challengeCard        = card;
+        this.attemptCountEl       = card.querySelector('#attempt-count');
+        this._questionProgressEl  = card.querySelector('#question-progress');
+        this._challengeTargetsEl  = card.querySelector('#challenge-targets-list');
     }
 
     updateHUD(state) {
@@ -168,7 +181,72 @@ export class UIManager {
 
         if (challengeScore) this._renderChallengeScore(challengeScore);
 
+        // Exam mode: show Next or Submit button; hide the CLOSE button
+        if (this.challengeManager?.isExamMode) {
+            this.resultCloseBtn.style.display = 'none';
+            const btn = this._getOrCreateExamActionBtn();
+            btn.disabled    = false;
+            btn.textContent = this.challengeManager.isLastQuestion ? 'Submit Exam' : 'Next Question →';
+            btn.onclick = this.challengeManager.isLastQuestion
+                ? () => { btn.disabled = true; this.callbacks.onSubmit(); }
+                : () => this.callbacks.onNext();
+        }
+
         this.resultPanel.classList.add('visible');
+    }
+
+    /** Returns the exam action button, creating it inside #result-panel if absent. */
+    _getOrCreateExamActionBtn() {
+        let btn = document.getElementById('exam-action-btn');
+        if (!btn) {
+            btn = document.createElement('button');
+            btn.id        = 'exam-action-btn';
+            btn.className = 'btn';
+            btn.style.cssText = 'margin-top:12px;width:100%;padding:10px;font-size:1rem;';
+            this.resultPanel.appendChild(btn);
+        }
+        return btn;
+    }
+
+    /** Called after successful score submission. */
+    showExamSubmitted() {
+        const btn = document.getElementById('exam-action-btn');
+        if (btn) {
+            btn.textContent = 'Exam Submitted ✓';
+            btn.disabled    = true;
+            btn.style.color = '#44ff88';
+        }
+    }
+
+    /** Called when score submission fails — re-enables retry. */
+    showSubmitError() {
+        const btn = document.getElementById('exam-action-btn');
+        if (btn) {
+            btn.textContent = 'Retry Submit';
+            btn.disabled    = false;
+            btn.style.color = '';
+        }
+    }
+
+    /**
+     * Rebuilds the challenge card heading and targets after nextQuestion().
+     * Called by onNext in main.js.
+     */
+    refreshChallengeCard() {
+        if (!this.challengeManager?.isActive || !this.challengeCard) return;
+
+        // Update question progress heading
+        if (this.challengeManager.isExamMode && this._questionProgressEl) {
+            const { current, total } = this.challengeManager.questionProgress;
+            this._questionProgressEl.textContent = `Question ${current} of ${total}`;
+        }
+
+        // Re-render target list
+        if (this._challengeTargetsEl) {
+            this._challengeTargetsEl.innerHTML = this.challengeManager.targets
+                .map(t => `<div class="challenge-target">≥ ${t.value.toFixed(t.decimals)} ${t.unit} — ${t.label}</div>`)
+                .join('');
+        }
     }
 
     _renderChallengeScore(challengeScore) {

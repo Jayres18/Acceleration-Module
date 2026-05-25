@@ -106,7 +106,12 @@ export class XRHandler {
         this.scene.add(this.instructionPanel.mesh);
 
         // Result panel — centered, in front of the user; hidden until flight ends
-        this.resultPanel = new VRResultPanel(() => this._onResultClose(), this._challengeManager);
+        this.resultPanel = new VRResultPanel(
+            () => this._onResultClose(),
+            this._challengeManager,
+            this.callbacks.onNext,
+            this.callbacks.onSubmit,
+        );
         this.resultPanel.mesh.position.set(0, -0.2, -1.3);
         this.resultPanel.mesh.visible = false;
         this.scene.add(this.resultPanel.mesh);
@@ -219,6 +224,21 @@ export class XRHandler {
         this.resultPanel.mesh.visible = false;
         this._panels = [this.controlPanel, this.hudPanel, this.graphPanel];
         this._panelMeshes = this._panels.map(p => p.mesh);
+    }
+
+    /** Relay exam submission success to the VR result panel. */
+    showExamSubmitted() {
+        this.resultPanel.showExamSubmitted();
+    }
+
+    /** Relay exam submission failure to the VR result panel (re-enables button). */
+    showSubmitError() {
+        this.resultPanel.showSubmitError();
+    }
+
+    /** Re-render the HUD panel after question targets change (called by onNext). */
+    refreshHUD() {
+        this.hudPanel.render();
     }
 
     _onResultClose() {

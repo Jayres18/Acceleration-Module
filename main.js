@@ -1,18 +1,28 @@
+// main.js
 import * as THREE from 'three';
-import { MainScene } from './scenes/MainScene.js';
-import { PhysicsEngine } from './physics/PhysicsEngine.js';
-import { UIManager } from './ui/UIManager.js';
-import { XRHandler } from './xr/XRHandler.js';
-import { ParticleSystem } from './scripts/ParticleSystem.js';
+import { MainScene }       from './scenes/MainScene.js';
+import { PhysicsEngine }   from './physics/PhysicsEngine.js';
+import { UIManager }       from './ui/UIManager.js';
+import { XRHandler }       from './xr/XRHandler.js';
+import { ParticleSystem }  from './scripts/ParticleSystem.js';
 import { ChallengeManager } from './ChallengeManager.js';
-
+import { ExamService }     from './api/ExamService.js';
 
 class RocketApp {
-    constructor() {
-        this.physics   = new PhysicsEngine();
-        this.scene     = new MainScene();
-        this.particles = new ParticleSystem(this.scene.scene);
-        this.challenge = new ChallengeManager();
+    /**
+     * @param {ChallengeManager} challenge  - already populated (URL-param or exam mode)
+     * @param {ExamService|null} examService
+     * @param {number|null} userId
+     * @param {number|null} examId
+     */
+    constructor(challenge, examService = null, userId = null, examId = null) {
+        this.physics      = new PhysicsEngine();
+        this.scene        = new MainScene();
+        this.particles    = new ParticleSystem(this.scene.scene);
+        this.challenge    = challenge;
+        this._examService = examService;
+        this._userId      = userId;
+        this._examId      = examId;
 
         const callbacks = {
             onThrustChange: val => this.physics.setParameters(this.physics.mass, val),
@@ -31,6 +41,38 @@ class RocketApp {
                 this.xr.resetPanels();
                 this.challenge.reset();
             },
+            onNext: () => {
+                this.challenge.nextQuestion();
+                this.physics.reset();
+                this.ui.resetUI();
+                this.ui.refreshChallengeCard();
+                this.scene.updateRocket(0, false);
+                this.particles.reset();
+                this._wasLaunched = false;
+                this.xr.resetPanels();
+                this.xr.refreshHUD();
+            },
+            onSubmit: async () => {
+                if (!this._examService) {
+                    console.error('[ExamMode] No exam service available — cannot submit scores.');
+                    this.ui.showSubmitError();
+                    this.xr.showSubmitError();
+                    return;
+                }
+                try {
+                    await this._examService.submitScores(
+                        this._userId,
+                        this._examId,
+                        this.challenge.getScores()
+                    );
+                    this.ui.showExamSubmitted();
+                    this.xr.showExamSubmitted();
+                } catch (err) {
+                    console.error('Score submission error:', err.message);
+                    this.ui.showSubmitError();
+                    this.xr.showSubmitError();
+                }
+            },
         };
 
         this.ui  = new UIManager(callbacks, this.challenge);
@@ -45,6 +87,45 @@ class RocketApp {
         this.scene.render(() => this._animate());
     }
 
+    // ── Static async factory ─────────────────────────────────────────────
+
+    static async create() {
+        const params = new URLSearchParams(window.location.search);
+        const examIdRaw = params.get('exam_id');
+        const userIdRaw = params.get('user_id');
+
+        const challenge = new ChallengeManager(); // reads URL-param targets (backward compat)
+        let examService = null;
+        let userId = null;
+        let examId = null;
+
+        if (examIdRaw) {
+            examId = parseInt(examIdRaw, 10);
+
+            if (!userIdRaw) {
+                console.warn('[ExamMode] Missing user_id — exam will not load.');
+            } else {
+                userId = parseInt(userIdRaw, 10);
+                examService = new ExamService();
+                try {
+                    const questions = await examService.fetchQuestions(examId);
+                    if (questions.length > 0) {
+                        challenge.loadFromExam(questions);
+                    } else {
+                        console.warn('[ExamMode] Exam returned no questions — free-play mode.');
+                    }
+                } catch (err) {
+                    console.error('[ExamMode] Failed to load exam:', err.message);
+                    examService = null; // disable submission if fetch failed
+                }
+            }
+        }
+
+        return new RocketApp(challenge, examService, userId, examId);
+    }
+
+    // ── Visualizers ───────────────────────────────────────────────────────
+
     _initVisualizers() {
         const up   = new THREE.Vector3(0, 1, 0);
         const down = new THREE.Vector3(0, -1, 0);
@@ -56,6 +137,8 @@ class RocketApp {
         this.scene.rocketGroup.add(this.thrustArrow);
         this.scene.rocketGroup.add(this.weightArrow);
     }
+
+    // ── Animation loop ────────────────────────────────────────────────────
 
     _animate() {
         const delta = Math.min(this.clock.getDelta(), 0.1) * this.timeScale;
@@ -96,9 +179,9 @@ class RocketApp {
             this.thrustArrow.visible = false;
         }
         this.weightArrow.setLength((this.physics.mass * 9.81) / 100);
-        this.weightArrow.position.y = 0.75; // rocket body centre
-        this.thrustArrow.position.y = 0;    // engine bell bottom
+        this.weightArrow.position.y = 0.75;
+        this.thrustArrow.position.y = 0;
     }
 }
 
-new RocketApp();
+RocketApp.create();

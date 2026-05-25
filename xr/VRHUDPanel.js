@@ -1,3 +1,4 @@
+// xr/VRHUDPanel.js
 import { VRPanel } from './VRPanel.js';
 
 // Canvas: 512 × (260 + extraH)   World: 0.90 × dynamic
@@ -26,12 +27,12 @@ export class VRHUDPanel extends VRPanel {
         this._drawBackground();
         this._drawTitle('FLIGHT DATA');
 
-        // ── 2×2 flight data grid ─────────────────────────────────────
+        // ── 2×2 flight data grid ──────────────────────────────────────────
         const items = [
-            { label: 'Velocity',     value: this._state.velocity?.toFixed(2) + ' m/s',         x: 20,               y: 90  },
-            { label: 'Acceleration', value: this._state.acceleration?.toFixed(2) + ' m/s²',    x: canvasW / 2 + 10, y: 90  },
-            { label: 'Altitude',     value: this._state.altitude?.toFixed(2) + ' m',            x: 20,               y: 175 },
-            { label: 'Fuel',         value: this._state.fuel?.toFixed(1) + '%',                 x: canvasW / 2 + 10, y: 175 },
+            { label: 'Velocity',     value: this._state.velocity?.toFixed(2) + ' m/s',      x: 20,               y: 90  },
+            { label: 'Acceleration', value: this._state.acceleration?.toFixed(2) + ' m/s²', x: canvasW / 2 + 10, y: 90  },
+            { label: 'Altitude',     value: this._state.altitude?.toFixed(2) + ' m',         x: 20,               y: 175 },
+            { label: 'Fuel',         value: this._state.fuel?.toFixed(1) + '%',              x: canvasW / 2 + 10, y: 175 },
         ];
 
         for (const item of items) {
@@ -47,13 +48,13 @@ export class VRHUDPanel extends VRPanel {
             ctx.fillText(item.value, item.x, item.y + 38);
         }
 
-        // Dividers — vertical stops at y=246 so it doesn't bleed into the challenge section
+        // Dividers
         ctx.strokeStyle = '#1a2255';
         ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(canvasW / 2, 60); ctx.lineTo(canvasW / 2, 246); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(14, 140); ctx.lineTo(canvasW - 14, 140); ctx.stroke();
 
-        // ── Challenge targets section ─────────────────────────────────
+        // ── Challenge targets section ──────────────────────────────────────
         if (this._challenge?.isActive) {
             const startY = 267;
 
@@ -61,11 +62,21 @@ export class VRHUDPanel extends VRPanel {
             ctx.lineWidth = 1;
             ctx.beginPath(); ctx.moveTo(14, startY); ctx.lineTo(canvasW - 14, startY); ctx.stroke();
 
+            // "CHALLENGE TARGETS" heading (left-aligned)
             ctx.fillStyle = '#ffaa22';
             ctx.font = 'bold 15px Arial';
-            ctx.textAlign = 'center';
+            ctx.textAlign = 'left';
             ctx.textBaseline = 'alphabetic';
-            ctx.fillText('CHALLENGE TARGETS', canvasW / 2, startY + 22);
+            ctx.fillText('CHALLENGE TARGETS', 20, startY + 22);
+
+            // "Q X / N" progress badge (right-aligned, exam mode only)
+            if (this._challenge.isExamMode) {
+                const { current, total } = this._challenge.questionProgress;
+                ctx.fillStyle = '#aabbff';
+                ctx.font = 'bold 14px Arial';
+                ctx.textAlign = 'right';
+                ctx.fillText(`Q ${current} / ${total}`, canvasW - 20, startY + 22);
+            }
 
             this._challenge.targets.forEach((t, i) => {
                 const y = startY + 40 + i * 28;

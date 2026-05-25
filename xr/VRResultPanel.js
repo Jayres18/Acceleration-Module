@@ -1,3 +1,4 @@
+// xr/VRResultPanel.js
 import { VRPanel } from './VRPanel.js';
 
 const ROWS = [
@@ -12,21 +13,38 @@ const ROWS = [
 
 function challengeExtraH(challengeManager) {
     if (!challengeManager?.isActive) return 0;
-    return 12 + 40 + challengeManager.targets.length * 38 + 40;
+    const base   = 12 + 40 + challengeManager.targets.length * 38 + 40;
+    const examBtn = challengeManager.isExamMode ? 60 : 0;
+    return base + examBtn;
 }
 
 export class VRResultPanel extends VRPanel {
-    constructor(onClose, challengeManager = null) {
+    constructor(onClose, challengeManager = null, onNext = null, onSubmit = null) {
         const extraH  = challengeExtraH(challengeManager);
         const canvasH = 428 + extraH;
         const worldH  = canvasH * (0.75 / 428);
         super(0.90, worldH, 512, canvasH);
 
-        this._results        = null;
-        this._challengeScore = null;
-        this._attemptCount   = 0;
+        this._results          = null;
+        this._challengeScore   = null;
+        this._attemptCount     = 0;
+        this._challengeManager = challengeManager;
+        this._onNext           = onNext;
+        this._onSubmit         = onSubmit;
+        this._examSubmitted    = false;
 
-        this.addButton('close', 'CLOSE', 156, canvasH - 54, 200, 40, onClose, {});
+        const isExam = challengeManager?.isExamMode;
+
+        if (isExam) {
+            // Exam mode: action button (Next / Submit), no close button
+            const label = challengeManager.isLastQuestion ? 'Submit Exam ✓' : 'Next Question →';
+            this.addButton('exam-action', label, 106, canvasH - 54, 300, 40,
+                () => this._handleExamAction(), {});
+        } else {
+            // Free-play / URL-param mode: normal close button
+            this.addButton('close', 'CLOSE', 156, canvasH - 54, 200, 40, onClose, {});
+        }
+
         this.render();
     }
 
@@ -34,11 +52,42 @@ export class VRResultPanel extends VRPanel {
         this._results        = results;
         this._challengeScore = challengeScore;
         this._attemptCount   = attemptCount;
+
+        // Update exam action button label to reflect current question position
+        if (this._challengeManager?.isExamMode && !this._examSubmitted) {
+            const el = this.elements.find(e => e.id === 'exam-action');
+            if (el) {
+                el.label    = this._challengeManager.isLastQuestion ? 'Submit Exam ✓' : 'Next Question →';
+                el.disabled = false;
+            }
+        }
+
+        this.render();
+    }
+
+    /** Called by XRHandler after a successful score submission. */
+    showExamSubmitted() {
+        this._examSubmitted = true;
+        const el = this.elements.find(e => e.id === 'exam-action');
+        if (el) {
+            el.label    = 'Exam Submitted ✓';
+            el.disabled = true;
+        }
+        this.render();
+    }
+
+    /** Called by XRHandler when score submission fails. Re-enables the button. */
+    showSubmitError() {
+        const el = this.elements.find(e => e.id === 'exam-action');
+        if (el) {
+            el.label    = 'Retry Submit';
+            el.disabled = false;
+        }
         this.render();
     }
 
     render() {
-        const { ctx, canvasW } = this;
+        const { ctx, canvasW, canvasH } = this;
         this._drawBackground();
         this._drawTitle('FLIGHT RESULTS');
 
@@ -48,7 +97,7 @@ export class VRResultPanel extends VRPanel {
         const rowH   = 42;
 
         if (this._results) {
-            // ── Flight stats rows ────────────────────────────────────────
+            // ── Flight stats rows ─────────────────────────────────────────
             ROWS.forEach((row, i) => {
                 const y      = startY + i * rowH;
                 const val    = this._results[row.key];
@@ -78,7 +127,7 @@ export class VRResultPanel extends VRPanel {
                 ctx.stroke();
             });
 
-            // ── Challenge score block ────────────────────────────────────
+            // ── Challenge score block ─────────────────────────────────────
             if (this._challengeScore) {
                 const secY = startY + ROWS.length * rowH + 12;
 
@@ -119,12 +168,26 @@ export class VRResultPanel extends VRPanel {
                     ctx.fillText(valStr, padR - 8, y + 18);
                 });
 
-                const attemptY = secY + 40 + this._challengeScore.length * 38 + 18;
-                ctx.fillStyle = '#6677aa';
-                ctx.font = '14px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText(`Attempt ${this._attemptCount}`, canvasW / 2, attemptY);
+                // Attempt count (URL-param mode only; exam mode shows question progress instead)
+                if (!this._challengeManager?.isExamMode) {
+                    const attemptY = secY + 40 + this._challengeScore.length * 38 + 18;
+                    ctx.fillStyle = '#6677aa';
+                    ctx.font = '14px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(`Attempt ${this._attemptCount}`, canvasW / 2, attemptY);
+                }
 
+                ctx.textBaseline = 'alphabetic';
+            }
+
+            // ── Exam submitted confirmation ────────────────────────────────
+            if (this._examSubmitted) {
+                const confirmY = canvasH - 80;
+                ctx.fillStyle = '#44ff88';
+                ctx.font = 'bold 18px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('Exam Submitted ✓', canvasW / 2, confirmY);
                 ctx.textBaseline = 'alphabetic';
             }
         }
@@ -134,5 +197,19 @@ export class VRResultPanel extends VRPanel {
         });
 
         super.render();
+    }
+
+    _handleExamAction() {
+        if (this._examSubmitted) return;
+        if (this._challengeManager.isLastQuestion) {
+            this._examSubmitted = true;
+            // Disable button immediately to prevent double-tap
+            const el = this.elements.find(e => e.id === 'exam-action');
+            if (el) el.disabled = true;
+            this.render();
+            this._onSubmit && this._onSubmit();
+        } else {
+            this._onNext && this._onNext();
+        }
     }
 }

@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(Get-ChildItem \"C:\\\\Users\\\\acer\\\\Desktop\\\\Acceleration Module\" -File -Filter \"*.js\")",
+      "Bash(Select-Object Name)"
     ]
   }
 }
