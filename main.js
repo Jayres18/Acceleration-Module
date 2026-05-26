@@ -7,6 +7,7 @@ import { XRHandler }       from './xr/XRHandler.js';
 import { ParticleSystem }  from './scripts/ParticleSystem.js';
 import { ChallengeManager } from './ChallengeManager.js';
 import { ExamService }     from './api/ExamService.js';
+import { AudioManager }    from './audio/AudioManager.js';
 
 class RocketApp {
     /**
@@ -23,6 +24,7 @@ class RocketApp {
         this._examService = examService;
         this._userId      = userId;
         this._examId      = examId;
+        this.audio        = new AudioManager();
 
         const callbacks = {
             onThrustChange: val => this.physics.setParameters(this.physics.mass, val),
@@ -31,6 +33,16 @@ class RocketApp {
             onLaunch: () => {
                 this.physics.launch();
                 this.ui.launchBtn.disabled = true;
+                // SFX: launch button click
+                this.audio.playSfx('sfx-launch-click');
+                // SFX: liftoff rumble + engine loop
+                this.audio.playSfx('sfx-liftoff-rumble');
+                this.audio.playLoop('sfx-engine-loop');
+                // Narration: countdown → liftoff (chained)
+                const countdownAudio = this.audio.play('countdown');
+                if (countdownAudio) {
+                    countdownAudio.onended = () => this.audio.play('liftoff');
+                }
             },
             onReset: () => {
                 this.physics.reset();
@@ -40,6 +52,10 @@ class RocketApp {
                 this._wasLaunched = false;
                 this.xr.resetPanels();
                 this.challenge.reset();
+                // Audio: stop everything, replay pre-launch guidance
+                this.audio.reset();
+                this.audio.playSfx('sfx-reset-click');
+                this.audio.play('pre-launch');
             },
             onNext: () => {
                 this.challenge.nextQuestion();
@@ -51,6 +67,9 @@ class RocketApp {
                 this._wasLaunched = false;
                 this.xr.resetPanels();
                 this.xr.refreshHUD();
+                // Audio: reset for next question
+                this.audio.reset();
+                this.audio.play('pre-launch');
             },
             onSubmit: async () => {
                 if (!this._examService) {
@@ -85,6 +104,12 @@ class RocketApp {
         this._initVisualizers();
         this.physics.setParameters(10, 50);
         this.scene.render(() => this._animate());
+
+        // Narration: intro → pre-launch (chained; browser may block until first gesture)
+        const introAudio = this.audio.play('intro');
+        if (introAudio) {
+            introAudio.onended = () => this.audio.play('pre-launch');
+        }
     }
 
     // ── Static async factory ─────────────────────────────────────────────
@@ -156,7 +181,44 @@ class RocketApp {
                 : null;
             this.ui.showResults(results, challengeScore);
             this.xr.showResults(results, challengeScore, this.challenge.attemptCount);
+            // Stop engine loop on landing
+            this.audio.stopLoop();
         }
+
+        // ── Audio: in-flight milestone narration ───────────────────────────
+        if (state.isLaunched) {
+            const alt  = state.altitude;
+            const fuel = state.fuel;
+
+            // Altitude milestones (each fires once per flight)
+            if (alt >= 100  && !this.audio.hasPlayed('milestone-100m'))  {
+                this.audio.play('milestone-100m');
+                this.audio.playSfx('sfx-altitude-chime');
+            }
+            if (alt >= 500  && !this.audio.hasPlayed('milestone-500m'))  {
+                this.audio.play('milestone-500m');
+                this.audio.playSfx('sfx-altitude-chime');
+            }
+            if (alt >= 1000 && !this.audio.hasPlayed('milestone-1000m')) {
+                this.audio.play('milestone-1000m');
+                this.audio.playSfx('sfx-altitude-chime');
+            }
+
+            // Fuel warnings (each fires once per flight)
+            if (fuel <= 50 && !this.audio.hasPlayed('fuel-warning-50')) {
+                this.audio.play('fuel-warning-50');
+            }
+            if (fuel <= 25 && !this.audio.hasPlayed('fuel-warning-25')) {
+                this.audio.play('fuel-warning-25');
+                this.audio.playSfx('sfx-fuel-alarm');
+            }
+            if (fuel <= 0  && !this.audio.hasPlayed('fuel-empty')) {
+                this.audio.play('fuel-empty');
+                this.audio.stopLoop();
+                this.audio.playSfx('sfx-engine-cutoff');
+            }
+        }
+        // ── End audio milestones ───────────────────────────────────────────
 
         const isThrusting = state.isLaunched && state.fuel > 0;
         this.scene.updateRocket(state.altitude, isThrusting);
