@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { ARButton } from "three/addons/webxr/ARButton.js";
-import { XRHandModelFactory } from 'three/examples/jsm/webxr/XRHandModelFactory.js';
+import { OculusHandModel } from 'three/examples/jsm/webxr/OculusHandModel.js';
 import { VRControlPanel } from './VRControlPanel.js';
 import { VRHUDPanel } from './VRHUDPanel.js';
 import { VRGraphPanel } from './VRGraphPanel.js';
@@ -19,8 +19,6 @@ export class XRHandler {
         this._panels = [];
         this._activeCtrl = null;   // controller currently holding select
         this._instructionVisible = false;
-
-        this._handModelFactory = new XRHandModelFactory();
 
         this._initVRButton();
         this._initControllers();
@@ -67,7 +65,7 @@ export class XRHandler {
         // Hand tracking models
         [0, 1].forEach(i => {
             const hand = this.renderer.xr.getHand(i);
-            hand.add(this._handModelFactory.createHandModel(hand));
+            hand.add(new OculusHandModel(hand));
             this.scene.add(hand);
         });
     }

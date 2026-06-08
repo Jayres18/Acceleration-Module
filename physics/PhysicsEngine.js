@@ -38,6 +38,15 @@ export class PhysicsEngine {
         this.launchMass = this.mass;
     }
 
+    /**
+     * True if current thrust beats the rocket's weight, i.e. the net force is
+     * upward and the rocket will actually leave the ground. When false, the
+     * rocket stays put (velocity, acceleration, altitude remain 0).
+     */
+    willLiftOff() {
+        return this.thrust + this.mass * this.gravity > 0;
+    }
+
     update(deltaTime) {
         if (!this.isLaunched) return;
 

@@ -8,7 +8,7 @@ export class AudioManager {
         // ── Narration elements ──────────────────────────────────────────────
         this._narration = {};
         const narrationKeys = [
-            'intro', 'pre-launch', 'countdown', 'liftoff',
+            'intro', 'pre-launch', 'countdown', 'liftoff', 'launch-failed',
             'milestone-100m', 'milestone-500m', 'milestone-1000m',
             'fuel-warning-50', 'fuel-warning-25', 'fuel-empty'
         ];
@@ -83,6 +83,32 @@ export class AudioManager {
         }
         const clone = audio.cloneNode();
         clone.play().catch(() => {});
+    }
+
+    /**
+     * Play a one-shot SFX clip and invoke `onDone` once it finishes.
+     * Returns the cloned element so the caller can stop it early (e.g. on
+     * RESET). If the clip is unknown or playback is blocked, `onDone` is
+     * still called so callers that gate behaviour on it aren't left hanging.
+     */
+    playSfxUntil(eventKey, onDone) {
+        const audio = this._sfx[eventKey];
+        if (!audio) {
+            console.warn(`[AudioManager] Unknown SFX key: "${eventKey}"`);
+            if (onDone) onDone();
+            return null;
+        }
+        const clone = audio.cloneNode();
+        let finished = false;
+        const finish = () => {
+            if (finished) return;
+            finished = true;
+            clone.onended = null;
+            if (onDone) onDone();
+        };
+        clone.onended = finish;
+        clone.play().catch(finish);
+        return clone;
     }
 
     /**

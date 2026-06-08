@@ -3,7 +3,14 @@
     "allow": [
       "Bash(npm run *)",
       "Bash(Get-ChildItem \"C:\\\\Users\\\\acer\\\\Desktop\\\\Acceleration Module\" -File -Filter \"*.js\")",
-      "Bash(Select-Object Name)"
+      "Bash(Select-Object Name)",
+      "PowerShell(npm run *)",
+      "Bash(node --check \"C:\\\\Users\\\\acer\\\\Desktop\\\\Acceleration Module\\\\main.js\")",
+      "Bash(node -e \"const p=require\\('three/package.json'\\); console.log\\('three', p.version\\)\")",
+      "Bash(node --check \"C:\\\\Users\\\\acer\\\\Desktop\\\\Acceleration Module\\\\xr\\\\XRHandler.js\")",
+      "Bash(node --check main.js)",
+      "Bash(node --check physics/PhysicsEngine.js)",
+      "Bash(node --check audio/AudioManager.js)"
     ]
   }
 }

@@ -31,20 +31,40 @@ class RocketApp {
             onMassChange:   val => this.physics.setParameters(val, this.physics.thrust),
             onTimeChange:   val => { this.timeScale = val; },
             onLaunch: () => {
-                this.physics.launch();
+                if (this._pendingLaunch) return; // countdown beep already running
+                this._pendingLaunch = true;
                 this.ui.launchBtn.disabled = true;
-                // SFX: launch button click
+                // SFX: launch button click (immediate press feedback)
                 this.audio.playSfx('sfx-launch-click');
-                // SFX: liftoff rumble + engine loop
-                this.audio.playSfx('sfx-liftoff-rumble');
-                this.audio.playLoop('sfx-engine-loop');
-                // Narration: countdown → liftoff (chained)
-                const countdownAudio = this.audio.play('countdown');
-                if (countdownAudio) {
-                    countdownAudio.onended = () => this.audio.play('liftoff');
-                }
+                // Play the countdown beep, then launch once it finishes.
+                this._countdownSfx = this.audio.playSfxUntil('sfx-countdown-beep', () => {
+                    this._countdownSfx = null;
+                    if (!this._pendingLaunch) return; // cancelled by reset/next
+                    this._pendingLaunch = false;
+
+                    this.physics.launch();
+                    // Decide liftoff once, now — fuel burns during the countdown
+                    // narration, so re-checking later could misread a valid
+                    // launch that has since run out of fuel (thrust → 0).
+                    const liftsOff = this.physics.willLiftOff();
+                    // SFX: liftoff rumble + engine loop. Skip the engine loop
+                    // when thrust can't beat gravity — the rocket never leaves
+                    // the ground, so a running-engine sound would be wrong.
+                    this.audio.playSfx('sfx-liftoff-rumble');
+                    if (liftsOff) {
+                        this.audio.playLoop('sfx-engine-loop');
+                    }
+                    // Narration: countdown → liftoff, or the failed-launch
+                    // explanation when thrust can't beat gravity.
+                    const countdownAudio = this.audio.play('countdown');
+                    if (countdownAudio) {
+                        countdownAudio.onended = () =>
+                            this.audio.play(liftsOff ? 'liftoff' : 'launch-failed');
+                    }
+                });
             },
             onReset: () => {
+                this._cancelCountdown();
                 this.physics.reset();
                 this.ui.resetUI();
                 this.scene.updateRocket(0, false);
@@ -58,6 +78,7 @@ class RocketApp {
                 this.audio.play('pre-launch');
             },
             onNext: () => {
+                this._cancelCountdown();
                 this.challenge.nextQuestion();
                 this.physics.reset();
                 this.ui.resetUI();
@@ -100,12 +121,25 @@ class RocketApp {
         this.clock        = new THREE.Clock();
         this.timeScale    = 1.0;
         this._wasLaunched = false;
+        this._pendingLaunch = false; // true while the countdown beep is playing
+        this._countdownSfx  = null;  // the in-progress countdown beep element
 
         this._initVisualizers();
         this.physics.setParameters(10, 50);
         this.scene.render(() => this._animate());
 
         // Narration: intro → pre-launch (chained; browser may block until first gesture)
+        this._playIntro();
+
+        // Entering VR is a user gesture, so audio the browser blocked on the
+        // initial load is allowed here — (re)play the intro once VR starts.
+        this.scene.renderer.xr.addEventListener('sessionstart', () => this._playIntro());
+    }
+
+    // ── Narration ─────────────────────────────────────────────────────────
+
+    /** Play the intro narration, then chain into pre-launch guidance. */
+    _playIntro() {
         const introAudio = this.audio.play('intro');
         if (introAudio) {
             introAudio.onended = () => this.audio.play('pre-launch');
@@ -147,6 +181,17 @@ class RocketApp {
         }
 
         return new RocketApp(challenge, examService, userId, examId);
+    }
+
+    // ── Countdown ─────────────────────────────────────────────────────────
+
+    /** Abort an in-progress countdown beep so it never launches the rocket. */
+    _cancelCountdown() {
+        this._pendingLaunch = false;
+        if (this._countdownSfx) {
+            this._countdownSfx.pause();
+            this._countdownSfx = null;
+        }
     }
 
     // ── Visualizers ───────────────────────────────────────────────────────
