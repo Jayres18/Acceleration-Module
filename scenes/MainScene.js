@@ -9,6 +9,7 @@ export class MainScene {
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         this.camera.position.set(0, 1.6, 5);
         this.camera.lookAt(0, 1.6, 0);
+        this._tmpSize = new THREE.Vector2();
 
         delete window.XRWebGLBinding;
 
@@ -178,6 +179,18 @@ export class MainScene {
         this.rocketGroup.position.set(0, -1.45, -2.5);
         this.scene.add(this.rocketGroup);
 
+        // Chase camera — mounted below/behind the rocket, angled up at its
+        // body. Parented to rocketGroup so it tracks the rocket automatically;
+        // the rocket only translates, so the framing stays fixed for the whole
+        // flight (exhaust + star parallax convey motion).
+        this.chaseCamera = new THREE.PerspectiveCamera(60, 16 / 9, 0.05, 1000);
+        this.chaseCamera.position.set(0.8, -1.2, 2.2);
+        this.rocketGroup.add(this.chaseCamera);
+        this.rocketGroup.updateMatrixWorld(true);
+        this.chaseCamera.lookAt(
+            this.rocketGroup.localToWorld(new THREE.Vector3(0, 1.0, 0))
+        );
+
         new GLTFLoader().load('./models/rocket/scene.gltf', gltf => {
             const model = gltf.scene;
 
@@ -225,6 +238,38 @@ export class MainScene {
                 this.camera.lookAt(0, 1.6, 0);
             }
         }
+    }
+
+    /**
+     * Render the chase-camera view into a screen-space rectangle of the main
+     * canvas (desktop picture-in-picture). `rect` is a getBoundingClientRect()
+     * result — CSS pixels, top-left origin. Must be called AFTER the main
+     * scene render so it overlays.
+     */
+    renderChaseInset(rect) {
+        const w = rect.width;
+        const h = rect.height;
+        if (w <= 0 || h <= 0) return;
+
+        // WebGL viewport origin is bottom-left; flip Y from the CSS rect.
+        const canvasCssH = this.renderer.domElement.clientHeight;
+        const x = rect.left;
+        const y = canvasCssH - rect.bottom;
+
+        this.chaseCamera.aspect = w / h;
+        this.chaseCamera.updateProjectionMatrix();
+
+        const r = this.renderer;
+        r.setScissorTest(true);
+        r.setScissor(x, y, w, h);
+        r.setViewport(x, y, w, h);
+        r.render(this.scene, this.chaseCamera);
+
+        // Restore the full-frame viewport/scissor for the next main render.
+        r.setScissorTest(false);
+        const size = r.getSize(this._tmpSize);
+        r.setViewport(0, 0, size.x, size.y);
+        r.setScissor(0, 0, size.x, size.y);
     }
 
     _onResize() {

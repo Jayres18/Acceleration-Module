@@ -32,6 +32,36 @@ body {
     pointer-events: auto;
 }
 
+#top-left-stack {
+    align-self: flex-start;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+#rocket-cam {
+    display: none;            /* shown on liftoff */
+    width: 240px;
+    height: 135px;           /* 16:9 */
+    border: 1px solid #00f;
+    border-radius: 10px;
+    background: transparent;  /* the WebGL chase view shows through */
+    box-sizing: border-box;
+    position: relative;
+    pointer-events: none;
+}
+
+#rocket-cam-label {
+    position: absolute;
+    top: 4px;
+    left: 8px;
+    font-size: 0.7rem;
+    font-weight: bold;
+    color: #00f;
+    letter-spacing: 0.1em;
+    text-shadow: 0 0 4px #000;
+}
+
 .hud-item {
     font-size: 1.2rem;
     font-weight: bold;

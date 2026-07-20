@@ -70,6 +70,7 @@ class RocketApp {
                 this.scene.updateRocket(0, false);
                 this.particles.reset();
                 this._wasLaunched = false;
+                this._hideRocketCam();
                 this.xr.resetPanels();
                 this.challenge.reset();
                 // Audio: stop everything, replay pre-launch guidance
@@ -86,6 +87,7 @@ class RocketApp {
                 this.scene.updateRocket(0, false);
                 this.particles.reset();
                 this._wasLaunched = false;
+                this._hideRocketCam();
                 this.xr.resetPanels();
                 this.xr.refreshHUD();
                 // Audio: reset for next question
@@ -123,6 +125,8 @@ class RocketApp {
         this._wasLaunched = false;
         this._pendingLaunch = false; // true while the countdown beep is playing
         this._countdownSfx  = null;  // the in-progress countdown beep element
+        this._rocketCamActive = false;
+        this._rocketCamEl = document.getElementById('rocket-cam');
 
         this._initVisualizers();
         this.physics.setParameters(10, 50);
@@ -194,6 +198,21 @@ class RocketApp {
         }
     }
 
+    // ── Rocket camera ─────────────────────────────────────────────────────
+
+    _showRocketCam() {
+        if (this._rocketCamActive) return;
+        this._rocketCamActive = true;
+        if (this._rocketCamEl) this._rocketCamEl.style.display = 'block';
+        this.xr.showCamera();
+    }
+
+    _hideRocketCam() {
+        this._rocketCamActive = false;
+        if (this._rocketCamEl) this._rocketCamEl.style.display = 'none';
+        this.xr.hideCamera();
+    }
+
     // ── Visualizers ───────────────────────────────────────────────────────
 
     _initVisualizers() {
@@ -218,6 +237,11 @@ class RocketApp {
         const state = this.physics.getState();
         this._wasLaunched = state.isLaunched;
 
+        // Rocket-cam: show once the rocket is actually airborne.
+        if (state.isLaunched && state.altitude > 0 && !this._rocketCamActive) {
+            this._showRocketCam();
+        }
+
         // Detect flight end: launched → landed
         if (wasLaunched && !state.isLaunched) {
             const results        = this.physics.getResults();
@@ -228,6 +252,7 @@ class RocketApp {
             this.xr.showResults(results, challengeScore, this.challenge.attemptCount);
             // Stop engine loop on landing
             this.audio.stopLoop();
+            this._hideRocketCam();
         }
 
         // ── Audio: in-flight milestone narration ───────────────────────────
@@ -275,7 +300,19 @@ class RocketApp {
         const rocketPos = this.scene.rocketGroup.position.clone();
         this.particles.update(delta, isThrusting, rocketPos);
 
+        // VR monitor: render the chase view into its texture before the main
+        // (headset) render. Desktop uses the scissor inset below instead.
+        if (this._rocketCamActive && this.scene.renderer.xr.isPresenting) {
+            this.xr.renderCameraView(this.scene.scene, this.scene.chaseCamera);
+        }
+
         this.scene.renderer.render(this.scene.scene, this.scene.camera);
+
+        // Desktop picture-in-picture: overlay the chase view after the main
+        // render. (VR uses the render-target pass above instead.)
+        if (this._rocketCamActive && this._rocketCamEl && !this.scene.renderer.xr.isPresenting) {
+            this.scene.renderChaseInset(this._rocketCamEl.getBoundingClientRect());
+        }
     }
 
     _updateVisualizers(state) {

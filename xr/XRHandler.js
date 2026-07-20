@@ -6,6 +6,7 @@ import { VRHUDPanel } from './VRHUDPanel.js';
 import { VRGraphPanel } from './VRGraphPanel.js';
 import { VRInstructionPanel } from './VRInstructionPanel.js';
 import { VRResultPanel } from './VRResultPanel.js';
+import { VRCameraPanel } from './VRCameraPanel.js';
 
 export class XRHandler {
     constructor(renderer, scene, callbacks, challengeManager = null) {
@@ -90,6 +91,12 @@ export class XRHandler {
         this.hudPanel = new VRHUDPanel(this._challengeManager);
         this.hudPanel.mesh.position.set(0, -0.5, -1.5);
         this.scene.add(this.hudPanel.mesh);
+
+        // Rocket camera monitor — above the HUD; non-interactive, so it is
+        // deliberately NOT added to _panels (excluded from raycasting).
+        this.cameraPanel = new VRCameraPanel();
+        this.cameraPanel.mesh.position.set(0, 0.35, -1.5);
+        this.scene.add(this.cameraPanel.mesh);
 
         // Graph panel — left of the user, mirrored angle
         this.graphPanel = new VRGraphPanel();
@@ -239,6 +246,21 @@ export class XRHandler {
         this.hudPanel.render();
     }
 
+    // ── Rocket camera monitor ──────────────────────────────────────────
+
+    showCamera() { this.cameraPanel.mesh.visible = true; }
+    hideCamera() { this.cameraPanel.mesh.visible = false; }
+
+    /** Render the chase-camera view into the monitor panel's texture. */
+    renderCameraView(scene, chaseCamera) {
+        const rt = this.cameraPanel.renderTarget;
+        chaseCamera.aspect = rt.width / rt.height;
+        chaseCamera.updateProjectionMatrix();
+        this.renderer.setRenderTarget(rt);
+        this.renderer.render(scene, chaseCamera);
+        this.renderer.setRenderTarget(null);
+    }
+
     _onResultClose() {
         this.callbacks.onReset();
     }
@@ -248,5 +270,6 @@ export class XRHandler {
         this.controlPanel.setDisabled('launch', false);
         this.controlPanel.render();
         this.hideResults();
+        this.hideCamera();
     }
 }
