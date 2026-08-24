@@ -1,5 +1,9 @@
 node_modules/
 dist/
+# Handoff artifact — rebuilt from dist/, not source.
+acceleration-dist-*.zip
+# Dev-only TLS material, regenerated per machine — never committed, never shipped.
+dev/certs/
 .DS_Store
 *.local
 .env

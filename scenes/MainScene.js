@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { asset } from '../assetPath.js';
 
 export class MainScene {
     constructor() {
@@ -191,7 +192,7 @@ export class MainScene {
             this.rocketGroup.localToWorld(new THREE.Vector3(0, 1.0, 0))
         );
 
-        new GLTFLoader().load('./models/rocket/scene.gltf', gltf => {
+        new GLTFLoader().load(asset('models/rocket/scene.gltf'), gltf => {
             const model = gltf.scene;
 
             // Normalise to a 2 m tall bounding box

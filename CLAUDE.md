@@ -7,10 +7,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 npm run dev      # start dev server (HTTPS, all network interfaces)
 npm run build    # production build
-npm run preview  # preview production build
+npm run preview  # preview production build (serves dist/ with the /api proxy)
+npm test         # node --test — examLink + ChallengeManager
 ```
 
-The dev server runs on HTTPS (required for WebXR) using a self-signed cert via `@vitejs/plugin-basic-ssl`. The Vite base path is `/acceleration/`.
+The dev server runs on HTTPS because **WebXR only starts in a secure context** — over plain HTTP a headset gets no `navigator.xr` at all, while `http://localhost` is secure by browser exception, so a broken setup looks fine on a laptop.
+
+`dev/lanCert.js` issues that certificate via OpenSSL, naming `localhost`, this machine's hostname and `.local` mDNS name, and every LAN IP. The load-bearing detail: **a bare IP in the address bar is matched only against an `iPAddress` SAN, never a `DNS` one**, so both forms are emitted. `@vitejs/plugin-basic-ssl` cannot name a LAN address and is only the fallback when OpenSSL is missing. Certs live in `dev/certs/` (gitignored) and are reissued when the address set changes.
+
+## Deployment
+
+The module is deployed by handing over **a zip of the contents of `dist/`**, extracted into `/var/www/html/acceleration/` on the portal server. No build step, no source, no fixes at deploy time. Most ways this goes wrong are **invisible in development** and only appear on a headset in a classroom.
+
+- **Base path.** `vite.config.js` drives `base` from `BASE_PATH`, defaulting to `/acceleration/`, applied to `build` and `preview` only — the dev server stays at the root of its port. A malformed value throws rather than warning. On Windows, note that Git Bash rewrites `BASE_PATH=/acceleration/` into a filesystem path; set it in `.env`, use PowerShell, or just take the default.
+- **Runtime asset paths.** The bundler rewrites `import` statements and `src=` attributes but never a path built as a string at runtime. Anything under `public/` must go through `asset()` from `assetPath.js`. This covers `GLTFLoader`, the `Audio` constructor, and the vendored hand-tracking profiles.
+- **Hand-tracking meshes are vendored** in `public/hand-profiles/generic-hand/`. Left unset, `OculusHandModel` fetches them from jsDelivr at runtime and renders nothing on a classroom LAN with no route out. `XRHandler` assigns `handModel.path` after construction — that is correct, because `path` is read when the `connected` event fires, not in the constructor.
+- **The API is the root-relative string `/api`** and must stay that way. It is proxied at the server root and shared by every module, so it inherits the page's scheme and host. An absolute `http://` URL to a LAN IP is active mixed content on an HTTPS page and Chromium blocks it *silently*; `127.0.0.1` on a headset is the headset. `LMS_ORIGIN` (server-side, `vite.config.js`) is the only place an absolute URL is safe.
+- **Nothing at the web root.** The portal owns `/`; this module owns `/acceleration/` and nothing else.
+
+Static checks to run against a built `dist/` are in `MODULE_BUILD_HANDOFF.md` §7. `cdn.jsdelivr.net`, `immersiveweb.dev`, `jcgt.org` and `www.w3.org` appear in the bundle as dead string constants inside three.js and are never fetched.
 
 ## Architecture
 
@@ -33,6 +48,21 @@ This is a vanilla JS + Three.js educational simulation of Newton's Second Law (F
 | `xr/VRHUDPanel.js` | 2×2 flight data grid (velocity, acceleration, altitude, fuel). |
 | `xr/VRGraphPanel.js` | Live acceleration graph + inline quiz. Quiz buttons are `disabled` until first launch. |
 | `scripts/ParticleSystem.js` | Exhaust particles: 5 mesh clones per frame while thrusting, faded and removed by lifetime. |
+| `assetPath.js` | `asset(path)` — prefixes `import.meta.env.BASE_URL` onto anything loaded from `public/` at runtime. |
+| `examLink.js` | Captures `?user_id`/`?exam_id` into `sessionStorage` and strips them from the address bar; handles `?mode=explore`. Dependency-free and injectable, so it is tested under Node. |
+| `api/ExamService.js` | `GET /api/questions/exam/:id` and the single `POST /api/scores/submit`. Treats an empty 200 body as "exam not found" and carries the server's message into the thrown error. |
+| `ChallengeManager.js` | Targets from URL params or an exam. Coerces string properties, tolerates `question_properties_values` arriving as a JSON string or null, accepts `id` for `question_id`. |
+| `audio/AudioManager.js` | Narration + SFX elements, all resolved through `asset()`. |
+
+### Exam mode
+
+Driven by `?user_id=&exam_id=` from the portal. `examLink.captureExamLink()` reads those ids and removes them from the URL on load — on a shared headset the next student must not be able to read, or edit, the last one's identity. They persist in `sessionStorage` so a mid-exam reload resumes, and are cleared by `clearExamLink()` at the one place a save is confirmed.
+
+Scores are collected locally and sent **once** at the end of the sitting. `POST /api/scores/submit` records a sitting once and rejects a second submission for the same `(student_id, exam_id)` with a 400, so `RocketApp._submitScores` guards on `SAVE.SUBMITTING` and `SAVE.SAVED`, and `ChallengeManager.getScores()` returns *every* question — one omitted is absent from the record, not "unanswered".
+
+Because the results panel is drawn from local state it renders identically whether or not the POST landed, so `_setSaveStatus` pushes `submitting` / `saved` / `unsaved` to both `UIManager.showSaveStatus` and `VRResultPanel.showSaveStatus`. A failure shows "SCORES NOT SAVED" and reopens the action button as RETRY SAVE — reachable by controller ray and hand pinch, which arrive as the same select event.
+
+A question whose properties yield no usable target **cannot be passed**: `[].every()` is `true`, so the naive reading awards a mark to anyone who launches at all. Exam 41 on the live backend is exactly this shape.
 
 ### VR panel interaction model
 

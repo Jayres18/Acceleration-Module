@@ -1,3 +1,14 @@
+/**
+ * The save-status line interpolates a message that came from the server, so it
+ * is escaped rather than trusted — the exam payload is free-form JSON that
+ * nothing validates on the way in.
+ */
+function escapeHtml(str) {
+    const el = document.createElement('div');
+    el.textContent = String(str ?? '');
+    return el.innerHTML;
+}
+
 export class UIManager {
     constructor(callbacks, challengeManager = null) {
         this.callbacks = callbacks;
@@ -208,23 +219,106 @@ export class UIManager {
         return btn;
     }
 
-    /** Called after successful score submission. */
-    showExamSubmitted() {
-        const btn = document.getElementById('exam-action-btn');
-        if (btn) {
-            btn.textContent = 'Exam Submitted ✓';
-            btn.disabled    = true;
-            btn.style.color = '#44ff88';
+    /** Returns the save-status line, creating it inside #result-panel if absent. */
+    _getOrCreateLaunchFailLine() {
+        let line = document.getElementById('launch-fail-line');
+        if (!line) {
+            line = document.createElement('div');
+            line.id = 'launch-fail-line';
+            line.style.cssText =
+                'margin-top:10px;font-size:0.85rem;line-height:1.4;'
+                + 'text-align:center;color:#ffaa44;';
+            this.launchBtn.parentElement.appendChild(line);
         }
+        return line;
     }
 
-    /** Called when score submission fails — re-enables retry. */
-    showSubmitError() {
-        const btn = document.getElementById('exam-action-btn');
+    /**
+     * Explain a launch that never left the ground, and hand the LAUNCH button
+     * back so the thrust can be raised and the launch retried.
+     *
+     * A rocket that correctly refuses to fly is otherwise indistinguishable
+     * from a module that has stopped responding: the only feedback is the
+     * launch-failed narration, which is silent on a muted laptop, and the
+     * button stays disabled until RESET is found. Both leave a student
+     * looking at a rocket that did nothing, with nothing to act on.
+     */
+    showLaunchFailed(thrust, weight) {
+        const line = this._getOrCreateLaunchFailLine();
+        line.textContent =
+            `Not enough thrust: ${thrust.toFixed(0)} N cannot lift `
+            + `${weight.toFixed(1)} N of weight. Raise thrust above `
+            + `${weight.toFixed(1)} N, or reduce the mass.`;
+        line.style.display = '';
+        this.launchBtn.disabled = false;
+    }
+
+    /** Clear the failed-launch explanation. */
+    clearLaunchFailed() {
+        const line = document.getElementById('launch-fail-line');
+        if (line) line.style.display = 'none';
+    }
+    _getOrCreateSaveLine() {
+        let line = document.getElementById('exam-save-line');
+        if (!line) {
+            line = document.createElement('div');
+            line.id = 'exam-save-line';
+            line.style.cssText =
+                'margin-top:10px;font-size:0.9rem;line-height:1.4;text-align:center;';
+            this.resultPanel.appendChild(line);
+        }
+        return line;
+    }
+
+    /**
+     * Show where the sitting stands with the server.
+     *
+     * The scorecard above this line is drawn from local state and renders
+     * identically whether or not the POST landed, so a failure has to be said
+     * out loud here — and paired with a retry the student can actually press.
+     *
+     * @param {'submitting'|'saved'|'unsaved'} status
+     * @param {string} message  server's reason, shown only when unsaved
+     */
+    showSaveStatus(status, message = '') {
+        const line = this._getOrCreateSaveLine();
+        const btn  = document.getElementById('exam-action-btn');
+
+        if (status === 'submitting') {
+            line.style.color = '#8899cc';
+            line.textContent = 'Saving scores…';
+            if (btn) {
+                btn.textContent = 'Saving…';
+                btn.disabled    = true;
+                btn.style.color = '';
+            }
+            return;
+        }
+
+        if (status === 'saved') {
+            line.style.color = '#44ff88';
+            line.textContent = 'Scores saved.';
+            if (btn) {
+                btn.textContent = 'Exam Submitted ✓';
+                btn.disabled    = true;
+                btn.style.color = '#44ff88';
+            }
+            return;
+        }
+
+        // unsaved — the case the student must not be able to miss
+        line.style.color = '#ff5544';
+        line.innerHTML =
+            '<strong>SCORES NOT SAVED</strong><br>' +
+            `${escapeHtml(message)}<br>` +
+            'Press RETRY SAVE, or tell your teacher.';
         if (btn) {
-            btn.textContent = 'Retry Submit';
+            btn.textContent = 'RETRY SAVE';
             btn.disabled    = false;
             btn.style.color = '';
+            // The retry path is the submit path — its guards make a repeat press
+            // after a success a no-op rather than a second sitting.
+            btn.onclick = () => this.callbacks.onSubmit();
         }
     }
 

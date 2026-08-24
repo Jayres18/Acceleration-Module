@@ -6,6 +6,34 @@ const TARGETS_MAP = [
     { param: 'target_flight_time',   key: 'flightTime',      label: 'Flight Time',      unit: 's',    decimals: 2 },
 ];
 
+/**
+ * Read a question's `question_properties_values` into a plain object.
+ *
+ * The column is free-form JSON on the exam row and nothing validates it on the
+ * way in, so it may arrive as an object, as a JSON *string* of that object, or
+ * as null. A string indexes to `undefined` for every key rather than throwing,
+ * which is the bad case: the question loads with no targets and looks fine.
+ *
+ * @returns {object} always an object — `{}` when there was nothing usable.
+ */
+function parseQuestionProps(question) {
+    let props = question?.question_properties_values;
+
+    if (typeof props === 'string') {
+        try {
+            props = JSON.parse(props);
+        } catch {
+            console.error(
+                '[ExamMode] Unparseable question_properties_values on question',
+                question?.question_id, props,
+            );
+            props = null;
+        }
+    }
+
+    return props && typeof props === 'object' ? props : {};
+}
+
 export class ChallengeManager {
     constructor() {
         // ── URL-param mode (single challenge, backward-compatible) ──────
@@ -39,8 +67,17 @@ export class ChallengeManager {
      * @param {Array<{question_id: number, question_properties_values: object}>} questions
      */
     loadFromExam(questions) {
-        if (!questions || questions.length === 0) return;
-        this._questions    = questions;
+        if (!Array.isArray(questions) || questions.length === 0) return;
+
+        // Items carry `question_id`; some carry `id` instead. Settle on one up
+        // front — this value is what goes back in the score payload, and the
+        // endpoint rejects the whole submission if it does not match a question
+        // the exam actually contains.
+        this._questions = questions.map(q => ({
+            ...q,
+            question_id: q?.question_id ?? q?.id,
+        }));
+
         this._currentIndex = 0;
         this._scores       = [];
         this._examMode     = true;
@@ -70,9 +107,27 @@ export class ChallengeManager {
         }
     }
 
-    /** @returns {Array<{question_id: number, is_correct: boolean}>} snapshot copy */
+    /**
+     * Every question in the exam, in order, with the ones the student never
+     * reached marked incorrect.
+     *
+     * The sitting is recorded by a single POST, so this array is the only
+     * record that will ever exist — a question omitted here is not "unanswered"
+     * in the database, it is absent. Unreached questions are therefore included
+     * explicitly rather than left to be inferred.
+     *
+     * @returns {Array<{question_id: number, is_correct: boolean}>}
+     */
     getScores() {
-        return [...this._scores];
+        if (!this._examMode) return [...this._scores];
+
+        return this._questions.map(q => {
+            const recorded = this._scores.find(s => s.question_id === q.question_id);
+            return {
+                question_id: q.question_id,
+                is_correct: recorded ? recorded.is_correct : false,
+            };
+        });
     }
 
     /**
@@ -110,9 +165,15 @@ export class ChallengeManager {
             return { label: t.label, unit: t.unit, decimals: t.decimals, target: t.value, actual, passed, delta };
         });
 
-        // In exam mode, record pass/fail automatically (recordResult is idempotent)
+        // In exam mode, record pass/fail automatically (recordResult is idempotent).
+        //
+        // `[].every()` is true, so a question whose targets failed to parse would
+        // otherwise award a mark to everyone who launched at all. Requiring at
+        // least one target makes broken exam data cost a mark rather than hand
+        // out a meaningless perfect score — and _loadCurrentQuestion has already
+        // logged which question it was.
         if (this._examMode) {
-            this.recordResult(score.every(r => r.passed));
+            this.recordResult(score.length > 0 && score.every(r => r.passed));
         }
 
         return score;
@@ -127,12 +188,35 @@ export class ChallengeManager {
         const q = this._questions[this._currentIndex];
         this._currentQuestionId = q.question_id;
         this.targets = [];
+
+        const props = parseQuestionProps(q);
+
         for (const def of TARGETS_MAP) {
-            const raw = q.question_properties_values[def.param];
-            if (raw !== undefined && raw !== null) {
-                const value = parseFloat(raw);
-                if (!isNaN(value)) this.targets.push({ ...def, value });
+            const raw = props[def.param];
+            if (raw === undefined || raw === null || raw === '') continue;
+
+            // Number, not parseFloat: the values arrive as strings and
+            // parseFloat happily reads "12abc" as 12, which would silently
+            // grade against a target nobody set.
+            const value = Number(raw);
+            if (Number.isFinite(value)) {
+                this.targets.push({ ...def, value });
+            } else {
+                console.error(
+                    '[ExamMode] Non-numeric target on question', q.question_id,
+                    `${def.param}=`, raw,
+                );
             }
+        }
+
+        // No usable target means nothing to grade against. That must not read as
+        // "all targets met" — see the guard in evaluate().
+        if (this.targets.length === 0) {
+            console.error(
+                '[ExamMode] Question', q.question_id,
+                'has no usable targets; it cannot be passed.',
+                'Raw question_properties_values:', q.question_properties_values,
+            );
         }
     }
 }

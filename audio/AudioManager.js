@@ -1,9 +1,9 @@
 // audio/AudioManager.js
 // Manages all narration and sound-effect playback for the Acceleration Module.
+import { asset } from '../assetPath.js';
 
 export class AudioManager {
     constructor() {
-        const BASE = import.meta.env.BASE_URL; // '/acceleration/' in dev & preview
 
         // ── Narration elements ──────────────────────────────────────────────
         this._narration = {};
@@ -13,7 +13,7 @@ export class AudioManager {
             'fuel-warning-50', 'fuel-warning-25', 'fuel-empty'
         ];
         for (const key of narrationKeys) {
-            const el = new Audio(`${BASE}audio/narration/${key}.mp3`);
+            const el = new Audio(asset(`audio/narration/${key}.mp3`));
             el.preload = 'auto';
             this._narration[key] = el;
         }
@@ -26,7 +26,7 @@ export class AudioManager {
             'sfx-launch-click', 'sfx-reset-click'
         ];
         for (const key of sfxKeys) {
-            const el = new Audio(`${BASE}audio/sfx/${key}.mp3`);
+            const el = new Audio(asset(`audio/sfx/${key}.mp3`));
             el.preload = 'auto';
             this._sfx[key] = el;
         }

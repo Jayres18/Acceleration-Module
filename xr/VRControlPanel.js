@@ -17,7 +17,7 @@ export class VRControlPanel extends VRPanel {
         const W = 512 - P * 2;  // slider/button width = 420
 
         // Sliders — args: id, label, x, y, w, h, min, max, value, callback
-        this.addSlider('thrust', 'Thrust (N)', P, 60, W, 75,   0, 200, 50,  v => callbacks.onThrustChange(v));
+        this.addSlider('thrust', 'Thrust (N)', P, 60, W, 75,   0, 200, 150, v => callbacks.onThrustChange(v));
         this.addSlider('mass',   'Mass (kg)',  P, 155, W, 75,  1,  50, 10,  v => callbacks.onMassChange(v));
         this.addSlider('time',   'Time Scale', P, 250, W, 75, 0.1, 2.0, 1.0, v => callbacks.onTimeChange(v));
 

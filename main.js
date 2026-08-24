@@ -8,6 +8,17 @@ import { ParticleSystem }  from './scripts/ParticleSystem.js';
 import { ChallengeManager } from './ChallengeManager.js';
 import { ExamService }     from './api/ExamService.js';
 import { AudioManager }    from './audio/AudioManager.js';
+import { captureExamLink, clearExamLink } from './examLink.js';
+
+/**
+ * Where the sitting stands with the server.
+ *
+ * The results panel is drawn from local state, so it renders a full scorecard
+ * whether or not the POST landed — an exam that never reached the database
+ * looks exactly like one that did. On a shared headset nobody is watching a
+ * console, so the status has to appear on the panel itself.
+ */
+const SAVE = { SUBMITTING: 'submitting', SAVED: 'saved', UNSAVED: 'unsaved' };
 
 class RocketApp {
     /**
@@ -34,6 +45,7 @@ class RocketApp {
                 if (this._pendingLaunch) return; // countdown beep already running
                 this._pendingLaunch = true;
                 this.ui.launchBtn.disabled = true;
+                this.ui.clearLaunchFailed();
                 // SFX: launch button click (immediate press feedback)
                 this.audio.playSfx('sfx-launch-click');
                 // Play the countdown beep, then launch once it finishes.
@@ -53,6 +65,23 @@ class RocketApp {
                     this.audio.playSfx('sfx-liftoff-rumble');
                     if (liftsOff) {
                         this.audio.playLoop('sfx-engine-loop');
+                    } else {
+                        // Say so on screen, on both surfaces. launch-failed.mp3
+                        // already explains this, but narration is silent on a
+                        // muted laptop and inaudible in a noisy classroom, and
+                        // the LAUNCH button is disabled until RESET — so the
+                        // one case the module most wants to teach is the one
+                        // that looks like a fault.
+                        //
+                        // launchForce/launchMass rather than thrust/mass: the
+                        // engine zeroes thrust once fuel runs out, so the live
+                        // values do not necessarily still describe this launch.
+                        const weight = Math.abs(
+                            this.physics.launchMass * this.physics.gravity,
+                        );
+                        this.ui.showLaunchFailed(this.physics.launchForce, weight);
+                        this.xr.controlPanel.setDisabled('launch', false);
+                        this.xr.controlPanel.render();
                     }
                     // Narration: countdown → liftoff, or the failed-launch
                     // explanation when thrust can't beat gravity.
@@ -67,6 +96,7 @@ class RocketApp {
                 this._cancelCountdown();
                 this.physics.reset();
                 this.ui.resetUI();
+                this.ui.clearLaunchFailed();
                 this.scene.updateRocket(0, false);
                 this.particles.reset();
                 this._wasLaunched = false;
@@ -83,6 +113,7 @@ class RocketApp {
                 this.challenge.nextQuestion();
                 this.physics.reset();
                 this.ui.resetUI();
+                this.ui.clearLaunchFailed();
                 this.ui.refreshChallengeCard();
                 this.scene.updateRocket(0, false);
                 this.particles.reset();
@@ -94,27 +125,7 @@ class RocketApp {
                 this.audio.reset();
                 this.audio.play('pre-launch');
             },
-            onSubmit: async () => {
-                if (!this._examService) {
-                    console.error('[ExamMode] No exam service available — cannot submit scores.');
-                    this.ui.showSubmitError();
-                    this.xr.showSubmitError();
-                    return;
-                }
-                try {
-                    await this._examService.submitScores(
-                        this._userId,
-                        this._examId,
-                        this.challenge.getScores()
-                    );
-                    this.ui.showExamSubmitted();
-                    this.xr.showExamSubmitted();
-                } catch (err) {
-                    console.error('Score submission error:', err.message);
-                    this.ui.showSubmitError();
-                    this.xr.showSubmitError();
-                }
-            },
+            onSubmit: () => this._submitScores(),
         };
 
         this.ui  = new UIManager(callbacks, this.challenge);
@@ -128,8 +139,17 @@ class RocketApp {
         this._rocketCamActive = false;
         this._rocketCamEl = document.getElementById('rocket-cam');
 
+        this._saveStatus = null;   // null until a submission is attempted
+        this._saveError  = '';
+
         this._initVisualizers();
-        this.physics.setParameters(10, 50);
+        // 150 N against a 10 kg rocket: weight is 98.1 N, so the default
+        // configuration clears the ground at 5.19 m/s2. A default below the
+        // weight makes the module do nothing at all when a student presses
+        // LAUNCH on a fresh page, which reads as broken rather than as
+        // instructive. Must stay in step with the thrust slider defaults in
+        // index.html and VRControlPanel.
+        this.physics.setParameters(10, 150);
         this.scene.render(() => this._animate());
 
         // Narration: intro → pre-launch (chained; browser may block until first gesture)
@@ -150,10 +170,63 @@ class RocketApp {
         }
     }
 
+    // ── Score submission ─────────────────────────────────────────────────
+
+    /**
+     * Send the whole sitting in one request.
+     *
+     * `POST /api/scores/submit` records a sitting once and rejects a second
+     * submission for the same (student, exam) with a 400, so this is the only
+     * request the sitting gets — hence the guards, and hence
+     * `challenge.getScores()` returning every question rather than only the
+     * ones that were reached.
+     */
+    async _submitScores() {
+        const scores = this.challenge.getScores();
+        if (scores.length === 0) return;
+        if (this._saveStatus === SAVE.SUBMITTING) return;
+        // A sitting the server has already accepted must not be sent twice —
+        // the second attempt is exactly what the endpoint rejects.
+        if (this._saveStatus === SAVE.SAVED) return;
+
+        if (!this._examService) {
+            // The questions never loaded, so there is no sitting to record and
+            // retrying cannot help. Say so rather than offering a dead button.
+            console.error('[ExamMode] No exam service available — cannot submit scores.');
+            this._setSaveStatus(SAVE.UNSAVED, 'No connection to the exam server.');
+            return;
+        }
+
+        this._setSaveStatus(SAVE.SUBMITTING);
+        try {
+            await this._examService.submitScores(this._userId, this._examId, scores);
+            // The one place a save is known to have succeeded. Clearing here
+            // rather than at the call sites means a tab left open after a
+            // finished exam cannot hand the next student this one's identity.
+            clearExamLink();
+            this._setSaveStatus(SAVE.SAVED);
+        } catch (err) {
+            console.error('Score submission error:', err.message);
+            this._setSaveStatus(SAVE.UNSAVED, err.message);
+        }
+    }
+
+    /** Push the save state to both the DOM panel and the VR panel. */
+    _setSaveStatus(status, message = '') {
+        this._saveStatus = status;
+        this._saveError  = message;
+        this.ui.showSaveStatus(status, message);
+        this.xr.showSaveStatus(status, message);
+    }
+
     // ── Static async factory ─────────────────────────────────────────────
 
     static async create() {
-        const params = new URLSearchParams(window.location.search);
+        // Reads the exam link and takes it out of the address bar in one step,
+        // so the next student on this headset cannot read — or edit — the last
+        // one's ids. Returns '' for a browse-only visit, which simply leaves
+        // quiz mode inactive.
+        const params = new URLSearchParams(captureExamLink());
         const examIdRaw = params.get('exam_id');
         const userIdRaw = params.get('user_id');
 

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ARButton } from "three/addons/webxr/ARButton.js";
+import { VRButton } from 'three/addons/webxr/VRButton.js';
 import { OculusHandModel } from 'three/examples/jsm/webxr/OculusHandModel.js';
 import { VRControlPanel } from './VRControlPanel.js';
 import { VRHUDPanel } from './VRHUDPanel.js';
@@ -7,6 +7,7 @@ import { VRGraphPanel } from './VRGraphPanel.js';
 import { VRInstructionPanel } from './VRInstructionPanel.js';
 import { VRResultPanel } from './VRResultPanel.js';
 import { VRCameraPanel } from './VRCameraPanel.js';
+import { asset } from '../assetPath.js';
 
 export class XRHandler {
     constructor(renderer, scene, callbacks, challengeManager = null) {
@@ -31,12 +32,25 @@ export class XRHandler {
     // ── Setup ──────────────────────────────────────────────────────────
 
     _initVRButton() {
-            const arButton = ARButton.createButton(this.renderer, {
-                requiredFeatures: ["hand-tracking"],
-                optionalFeatures: ["dom-overlay", "local-floor", "bounded-floor"],
-            });
-        if (arButton) {
-            document.body.appendChild(arButton);
+        // immersive-vr, not immersive-ar. This module renders its own world —
+        // star field, ground plane, rocket — and an AR session would composite
+        // all of it over a passthrough view of the classroom. ARButton also
+        // labels itself "AR NOT SUPPORTED" on every desktop browser, which
+        // reads as the VR entry point having gone missing rather than as the
+        // wrong session type having been asked for.
+        //
+        // hand-tracking is optional, never required: requestSession rejects
+        // outright on a required feature the runtime does not implement, so
+        // requiring it costs every controller-only student the session itself.
+        // Controllers and hands both arrive as the same select event anyway.
+        //
+        // local-floor, bounded-floor and layers are not listed — VRButton
+        // already requests all three as optional features.
+        const vrButton = VRButton.createButton(this.renderer, {
+            optionalFeatures: ['hand-tracking'],
+        });
+        if (vrButton) {
+            document.body.appendChild(vrButton);
         }
     }
 
@@ -63,10 +77,20 @@ export class XRHandler {
             return ctrl;
         });
 
-        // Hand tracking models
+        // Hand tracking models. `path` must be set explicitly: left null,
+        // XRHandMeshModel falls back to its jsDelivr URL and fetches the
+        // meshes from the public internet every session, so hand tracking
+        // renders nothing on a classroom LAN with no route out. The assets are
+        // vendored under public/hand-profiles/ instead.
+        //
+        // It is assigned after construction rather than passed in — the
+        // constructor's second parameter is a Loader, not a path, and `path`
+        // is only read later, when the 'connected' event builds the mesh model.
         [0, 1].forEach(i => {
             const hand = this.renderer.xr.getHand(i);
-            hand.add(new OculusHandModel(hand));
+            const handModel = new OculusHandModel(hand);
+            handModel.path = asset('hand-profiles/generic-hand/');
+            hand.add(handModel);
             this.scene.add(hand);
         });
     }
@@ -231,14 +255,9 @@ export class XRHandler {
         this._panelMeshes = this._panels.map(p => p.mesh);
     }
 
-    /** Relay exam submission success to the VR result panel. */
-    showExamSubmitted() {
-        this.resultPanel.showExamSubmitted();
-    }
-
-    /** Relay exam submission failure to the VR result panel (re-enables button). */
-    showSubmitError() {
-        this.resultPanel.showSubmitError();
+    /** Relay the sitting's save state to the VR result panel. */
+    showSaveStatus(status, message = '') {
+        this.resultPanel.showSaveStatus(status, message);
     }
 
     /** Re-render the HUD panel after question targets change (called by onNext). */
