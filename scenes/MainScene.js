@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { asset } from '../assetPath.js';
 
 export class MainScene {
@@ -38,11 +40,31 @@ export class MainScene {
     // ── Lights ─────────────────────────────────────────────────────────
 
     _initLights() {
-        // Deep space ambient — very low, cold
-        this.scene.add(new THREE.AmbientLight(0x101828, 0.6));
+        // Deep space ambient — cold, and low enough to keep the night-launch
+        // look, but not so low that the rocket's near-black body (its darkest
+        // material has a base colour of 0.03) sinks into the background.
+        this.scene.add(new THREE.AmbientLight(0x161e2c, 0.6));
+
+        // Image-based light. Most of the rocket's materials are metallic
+        // (metalness 0.57-0.81), and a metal has no diffuse response — with no
+        // environment to reflect it renders black no matter how bright the key
+        // light is, so brightening the lights alone does not fix it.
+        //
+        // RoomEnvironment is generated procedurally on the GPU at startup: no
+        // HDR file in the deploy zip and no network request, which is the same
+        // constraint that puts the Draco decoder and hand profiles in public/.
+        //
+        // Nothing else in the scene is affected — the VR panels and the exhaust
+        // are MeshBasicMaterial (unlit) and the stars are Points.
+        const pmrem = new THREE.PMREMGenerator(this.renderer);
+        const room = new RoomEnvironment();
+        this.scene.environment = pmrem.fromScene(room, 0.04).texture;
+        this.scene.environmentIntensity = 0.18;
+        room.dispose();
+        pmrem.dispose();
 
         // Sun — angled, warm key light
-        const sun = new THREE.DirectionalLight(0xffeedd, 1.4);
+        const sun = new THREE.DirectionalLight(0xffeedd, 1.35);
         sun.position.set(8, 14, 6);
         sun.castShadow = true;
         sun.shadow.mapSize.set(2048, 2048);
@@ -55,7 +77,7 @@ export class MainScene {
         this.scene.add(sun);
 
         // Cool fill from the opposite side
-        const fill = new THREE.DirectionalLight(0x2244aa, 0.4);
+        const fill = new THREE.DirectionalLight(0x2e508c, 0.4);
         fill.position.set(-6, 4, -8);
         this.scene.add(fill);
 
@@ -176,6 +198,12 @@ export class MainScene {
     // ── Rocket (GLTF model) ────────────────────────────────────────────
 
     _initRocket() {
+        // Yaw applied to the rocket model inside rocketGroup. The chase camera
+        // hangs off rocketGroup rather than off the model, so it does not
+        // inherit this and has to be swung by the same angle to keep framing
+        // the same face — one constant so the two cannot drift apart.
+        const ROCKET_YAW = Math.PI * 3 / 2;
+
         this.rocketGroup = new THREE.Group();
         this.rocketGroup.position.set(0, -1.45, -2.5);
         this.scene.add(this.rocketGroup);
@@ -185,15 +213,41 @@ export class MainScene {
         // the rocket only translates, so the framing stays fixed for the whole
         // flight (exhaust + star parallax convey motion).
         this.chaseCamera = new THREE.PerspectiveCamera(60, 16 / 9, 0.05, 1000);
-        this.chaseCamera.position.set(0.8, -1.2, 2.2);
+        this.chaseCamera.position
+            .set(0.8, -1.2, 2.2)
+            .applyAxisAngle(new THREE.Vector3(0, 1, 0), ROCKET_YAW);
         this.rocketGroup.add(this.chaseCamera);
         this.rocketGroup.updateMatrixWorld(true);
+        // The aim point is on the rocket's centre line, which is the axis of
+        // that rotation, so it does not move and the framing is unchanged.
         this.chaseCamera.lookAt(
             this.rocketGroup.localToWorld(new THREE.Vector3(0, 1.0, 0))
         );
 
-        new GLTFLoader().load(asset('models/rocket/scene.gltf'), gltf => {
+        // Rocketv2.glb is Draco-compressed (KHR_draco_mesh_compression is in
+        // extensionsRequired), so GLTFLoader throws on it without a decoder.
+        // The decoder is vendored in public/draco/ rather than pulled from
+        // gstatic — same reason as the hand profiles: a classroom LAN has no
+        // route out, and the failure is a silent empty pad on the headset.
+        const dracoLoader = new DRACOLoader();
+        dracoLoader.setDecoderPath(asset('draco/'));
+
+        const loader = new GLTFLoader();
+        loader.setDRACOLoader(dracoLoader);
+
+        loader.load(asset('models/rocket/Rocketv2.glb'), gltf => {
             const model = gltf.scene;
+
+            // Three quarter-turns to the right (90 deg, then a further 180),
+            // shared with the chase camera above.
+            // Set before the measurements below, not after: Object3D composes
+            // its matrix as T * R * S, so the centring offsets are applied
+            // after this rotation — computing them in the unrotated frame
+            // would swing the rocket off the pad. Box3.setFromObject reads
+            // matrixWorld, so it picks this up, and an odd quarter-turn about
+            // Y only swaps the X and Z extents, leaving the fitted scale and
+            // the base height unchanged.
+            model.rotation.y = ROCKET_YAW;
 
             // Normalise to a 2 m tall bounding box
             const box = new THREE.Box3().setFromObject(model);
@@ -218,6 +272,13 @@ export class MainScene {
             });
 
             this.rocketGroup.add(model);
+
+            // One model, one decode — release the decoder worker.
+            dracoLoader.dispose();
+        }, undefined, err => {
+            // Never fail silently: an unloaded rocket looks like an empty pad.
+            console.error('[MainScene] rocket model failed to load', err);
+            dracoLoader.dispose();
         });
     }
 

@@ -19,6 +19,19 @@
                     <div class="hud-item">Altitude: <span id="altitude-val">0</span> m</div>
                     <div class="hud-item">Fuel: <span id="fuel-val">100</span>%</div>
                 </div>
+                <div id="info-panel" class="panel">
+                    <h3>Learning Module: Acceleration</h3>
+                    <p id="instruction-text">Adjust the thrust and mass, then launch the rocket to observe acceleration.</p>
+                    <div id="graph-container">
+                        <canvas id="physics-graph"></canvas>
+                    </div>
+                    <div id="quiz-container" style="display:none; margin-top:10px;">
+                        <hr>
+                        <p><b>Quick Quiz:</b> If you increase the mass but keep thrust the same, what happens to acceleration?</p>
+                        <button class="quiz-opt" data-correct="false">Increases</button>
+                        <button class="quiz-opt" data-correct="true">Decreases</button>
+                    </div>
+                </div>
             </div>
             
             <div id="controls" class="panel">
@@ -37,20 +50,6 @@
                 </div>
                 <button id="launch-btn">LAUNCH</button>
                 <button id="reset-btn">RESET</button>
-            </div>
-
-            <div id="info-panel" class="panel">
-                <h3>Learning Module: Acceleration</h3>
-                <p id="instruction-text">Adjust the thrust and mass, then launch the rocket to observe acceleration.</p>
-                <div id="graph-container">
-                    <canvas id="physics-graph"></canvas>
-                </div>
-                <div id="quiz-container" style="display:none; margin-top:10px;">
-                    <hr>
-                    <p><b>Quick Quiz:</b> If you increase the mass but keep thrust the same, what happens to acceleration?</p>
-                    <button class="quiz-opt" data-correct="false">Increases</button>
-                    <button class="quiz-opt" data-correct="true">Decreases</button>
-                </div>
             </div>
         </div>
     </div>

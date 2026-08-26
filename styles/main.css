@@ -23,6 +23,7 @@ body {
 
 #hud {
     display: flex;
+    flex-shrink: 0;
     gap: 20px;
     background: rgba(0, 0, 0, 0.5);
     padding: 10px 20px;
@@ -37,10 +38,17 @@ body {
     display: flex;
     flex-direction: column;
     gap: 10px;
+    /* Never taller than the viewport (less #ui-container's 20px padding). The
+       stack holds the cam, the HUD and the info panel, which together want
+       ~680px once the quiz expands — more than a 1366x768 laptop has after
+       browser chrome. Without this the quiz buttons go off-screen, and they
+       are exam-scoring controls. */
+    max-height: calc(100vh - 40px);
 }
 
 #rocket-cam {
     display: none;            /* shown on liftoff */
+    flex-shrink: 0;           /* hold 16:9 when the stack is squeezed */
     width: 240px;
     height: 135px;           /* 16:9 */
     border: 1px solid #00f;
@@ -76,14 +84,45 @@ body {
     max-width: 300px;
 }
 
+/* Pinned bottom-right rather than left in the column flow. #ui-container is a
+   flex column, so an in-flow #controls has its height added to the top-left
+   stack's — and once the quiz expands that stack, the sum exceeds the viewport
+   and the LAUNCH/RESET buttons are pushed off the bottom edge. The two sit in
+   opposite corners, so they have no business sharing a vertical flow. */
 #controls {
-    align-self: flex-end;
+    position: absolute;
+    right: 20px;
+    bottom: 20px;
 }
 
+/* In the top-left stack, below the HUD. Not absolutely positioned: the stack
+   grows by the height of #rocket-cam when that appears on liftoff, so a pinned
+   top offset overlapped the HUD for the whole flight. */
 #info-panel {
-    position: absolute;
-    top: 100px;
-    left: 20px;
+    align-self: flex-start;
+    /* Absorbs the squeeze: min-height:0 lets a flex item shrink below its
+       content height, so a short viewport scrolls the panel instead of
+       pushing the quiz past the bottom edge. */
+    min-height: 0;
+    overflow-y: auto;
+    /* The vertical scrollbar eats width and would otherwise trigger a second,
+       horizontal one. */
+    overflow-x: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: #00f transparent;
+}
+
+#info-panel::-webkit-scrollbar {
+    width: 8px;
+}
+
+#info-panel::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#info-panel::-webkit-scrollbar-thumb {
+    background: #00f;
+    border-radius: 4px;
 }
 
 h3 {
@@ -127,6 +166,9 @@ button:hover {
     background: #111;
     margin-top: 10px;
     border: 1px solid #333;
+    /* No global border-box reset here, so width:100% plus the 1px border
+       overflows the panel by 2px and makes it scroll sideways. */
+    box-sizing: border-box;
 }
 
 canvas#physics-graph {
