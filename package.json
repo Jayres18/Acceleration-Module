@@ -8,7 +8,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test"
+    "test": "node --test ChallengeManager.test.js examLink.test.js physics/PhysicsEngine.test.js scenes/MainScene.test.js xr/XRHandler.test.js",
+    "check:exams": "node dev/checkExamTargets.js"
   },
   "dependencies": {
     "three": "^0.184.0"

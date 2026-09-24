@@ -87,10 +87,11 @@ Answers to `MODULE_BUILD_HANDOFF.md` §0 and the §8 handoff form.
    Nothing in `{}` is gradeable by this module. A question with no usable target
    is now recorded **incorrect** and logged, rather than passing everyone —
    `[].every()` is `true`, so the previous reading awarded a mark to anyone who
-   launched at all. If exam 41 is meant for this module, its questions need
-   `target_*` properties set in the portal. **Exam 42** is the correctly
-   configured one (`target_avg_accel`, `target_max_velocity`,
-   `target_peak_altitude`, all as strings).
+   launched at all. **Exam 41 is not this module's exam** (confirmed
+   2026-09-22), so nothing needs setting there — it is recorded here only
+   because it is what the endpoint returns for a neighbouring id. **Exam 42**
+   is this module's exam and the correctly configured one (`target_avg_accel`,
+   `target_max_velocity`, `target_peak_altitude`, all as strings).
 
 2. **A first attempt is a student's only scored attempt.** `recordResult` is
    idempotent per `question_id`, so a student who fails, resets and succeeds
@@ -129,3 +130,32 @@ Fetched from the portal backend via the preview proxy, 2026-08-12:
 Both are pinned as tests in `ChallengeManager.test.js`. Exams 1, 2 and 40 return
 an **empty 200 body** rather than a 404 — `ExamService.fetchQuestions` treats
 that as "exam not found" instead of letting `resp.json()` throw.
+
+### Checking targets against the physics
+
+`npm run check:exams [ids | --scan 1-60]` fetches each exam and sweeps the whole
+slider space through the real `PhysicsEngine`, reporting how many settings pass
+and the gentlest one that does. It only GETs, and it needs a machine that can
+reach `LMS_ORIGIN`. Run it after any change to the flight model — a target that
+has become unreachable is invisible from the portal, because the module records
+a fail and says nothing.
+
+Two results worth carrying forward, from the 2026-09-22 change that replaced
+free fall with a coast (`peakAltitude` is now burnout altitude, `flightTime` the
+burn duration, `avgAcceleration` exactly `(F - mg)/m`):
+
+- **Exam 42 q57 was unpassable before that change and is fine now.** Under free
+  fall the frame-average acceleration was dominated by the descent and came out
+  negative — best case `-0.06 m/s^2` against a target of 20 — so **0 of 2050**
+  slider combinations could pass. It is now 120 of 2050 at every classroom
+  refresh rate, gentlest at 30 N / 1 kg. Its targets need no re-tuning.
+- **`target_flight_time` has been removed from `TARGETS_MAP`.** The burn is
+  always 200 frames, so flight time is the same number whatever the student
+  answers (3.33 s at 60 Hz) — as a target it scored the hardware, not the
+  student. The results panel still reports the figure. No live exam used it, so
+  no exam changed behaviour; a question that sets it now has that line ignored,
+  and one that sets nothing else reports "no usable targets".
+
+Both the altitude and velocity targets still scale with the time-scale slider,
+since the burn is counted in frames: at 0.1x the flight is short enough that
+exam 42's 12 m altitude target cannot be met. That predates the coast change.

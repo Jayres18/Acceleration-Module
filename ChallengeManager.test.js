@@ -65,7 +65,7 @@ test('null properties do not throw', () => {
 });
 
 test('`id` is accepted where `question_id` is missing', () => {
-    cm.loadFromExam([{ id: 7, question_properties_values: { target_flight_time: '3' } }]);
+    cm.loadFromExam([{ id: 7, question_properties_values: { target_peak_altitude: '3' } }]);
 
     // The score payload has to carry the id the exam knows, or the whole
     // submission is rejected as "not part of this exam".
@@ -181,4 +181,28 @@ test('a non-array payload leaves the module in free play', () => {
 
     cm.loadFromExam({ question_id: 1 });
     assert.equal(cm.isExamMode, false);
+});
+
+test('target_flight_time is not gradeable and is not read as a target', () => {
+    // Results are captured at burnout and fuel burns per frame, so every flight
+    // lasts the same 200 frames whatever the student answers. A question that
+    // carries only this has nothing to grade, and has to say so rather than
+    // score everyone on their refresh rate.
+    const logged = captureErrors(() => {
+        cm.loadFromExam([
+            { question_id: 1, question_properties_values: { target_flight_time: '3' } },
+        ]);
+    });
+
+    assert.equal(cm.targets.length, 0);
+    assert.match(logged.join('\n'), /no usable targets/);
+});
+
+test('a flight-time target does not displace the targets alongside it', () => {
+    cm.loadFromExam([{
+        question_id: 1,
+        question_properties_values: { target_flight_time: '3', target_peak_altitude: '12' },
+    }]);
+
+    assert.deepEqual(cm.targets.map(t => t.key), ['peakAltitude']);
 });

@@ -23,7 +23,8 @@ export class VRGraphPanel extends VRPanel {
     }
 
     pushData(state) {
-        if (state.isLaunched) {
+        // Powered flight only — see UIManager.updateHUD.
+        if (state.isLaunched && !state.isCoasting) {
             this._data.push(state.acceleration);
             if (this._data.length > this._maxPts) this._data.shift();
             if (!this._quizVisible) {

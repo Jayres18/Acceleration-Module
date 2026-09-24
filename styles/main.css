@@ -238,6 +238,21 @@ canvas#physics-graph {
     font-family: 'Courier New', monospace;
 }
 
+/* CLOSE dismisses the panel and leaves the rocket coasting; RESET is the one
+   that puts it back on the pad. Two buttons side by side, so the global
+   `button { width: 100% }` has to be overridden or they overflow the row. */
+.result-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.result-actions button {
+    width: auto;
+    flex: 1 1 0;
+    margin-top: 0;
+}
+
 #result-close-btn {
     background: #1144cc;
     margin-top: 0;
@@ -245,6 +260,14 @@ canvas#physics-graph {
 
 #result-close-btn:hover {
     background: #2277ff;
+}
+
+#result-reset-btn {
+    background: #444;
+}
+
+#result-reset-btn:hover {
+    background: #666;
 }
 
 /* ── Challenge Card ─────────────────────────────────────────────── */

@@ -50,6 +50,7 @@ export class UIManager {
         this.resFlightTime    = document.getElementById('res-flight-time');
         this.resDistance      = document.getElementById('res-distance');
         this.resultCloseBtn   = document.getElementById('result-close-btn');
+        this.resultResetBtn   = document.getElementById('result-reset-btn');
         this.challengeResults = document.getElementById('challenge-results');
     }
 
@@ -77,16 +78,28 @@ export class UIManager {
             this.launchBtn.disabled = true;
         });
 
+        // No `launchBtn.disabled = false` here: resetUI() already re-enables it
+        // as part of onReset, and re-enabling it again afterwards would undo the
+        // trial lock that onReset applies last — handing out a sixth flight.
         this.resetBtn.addEventListener('click', () => {
             this.callbacks.onReset();
-            this.launchBtn.disabled = false;
         });
 
+        // CLOSE dismisses the panel and nothing else. The rocket is still
+        // coasting when the results appear, and resetting here took that away
+        // with no way to watch it. LAUNCH stays disabled: the flight has not
+        // ended, and re-launching mid-coast would re-arm an engine with no fuel.
         this.resultCloseBtn.addEventListener('click', () => {
             // In exam mode, navigation is handled only by the Next/Submit buttons
             if (this.challengeManager?.isExamMode) return;
+            this.hideResults();
+        });
+
+        // RESET is what CLOSE used to do: back to the pad, ready to fly again.
+        // Same as above — onReset owns the LAUNCH button's state.
+        this.resultResetBtn.addEventListener('click', () => {
+            if (this.challengeManager?.isExamMode) return;
             this.callbacks.onReset();
-            this.launchBtn.disabled = false;
         });
 
         this.quizOpts.forEach(opt => {
@@ -149,7 +162,9 @@ export class UIManager {
         this.altitudeVal.textContent = state.altitude.toFixed(2);
         this.fuelVal.textContent     = state.fuel.toFixed(1);
 
-        if (state.isLaunched) {
+        // Powered flight only. The coast after burnout is a flat zero that
+        // would scroll the burn off the far end of the window.
+        if (state.isLaunched && !state.isCoasting) {
             this.quizContainer.style.display = 'block';
             this.graphData.push(state.acceleration);
             if (this.graphData.length > this.maxDataPoints) this.graphData.shift();
@@ -195,6 +210,7 @@ export class UIManager {
         // Exam mode: show Next or Submit button; hide the CLOSE button
         if (this.challengeManager?.isExamMode) {
             this.resultCloseBtn.style.display = 'none';
+            this.resultResetBtn.style.display = 'none';
             const btn = this._getOrCreateExamActionBtn();
             btn.disabled    = false;
             btn.textContent = this.challengeManager.isLastQuestion ? 'Submit Exam' : 'Next Question →';

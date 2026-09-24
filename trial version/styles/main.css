@@ -1,0 +1,417 @@
+body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #000;
+    color: #fff;
+    overflow: hidden;
+}
+
+#ui-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+#hud {
+    display: flex;
+    flex-shrink: 0;
+    gap: 20px;
+    background: rgba(0, 0, 0, 0.5);
+    padding: 10px 20px;
+    border-radius: 10px;
+    border: 1px solid #00f;
+    align-self: flex-start;
+    pointer-events: auto;
+}
+
+#top-left-stack {
+    align-self: flex-start;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    /* Never taller than the viewport (less #ui-container's 20px padding). The
+       stack holds the cam, the HUD and the info panel, which together want
+       ~680px once the quiz expands — more than a 1366x768 laptop has after
+       browser chrome. Without this the quiz buttons go off-screen, and they
+       are exam-scoring controls. */
+    max-height: calc(100vh - 40px);
+}
+
+#rocket-cam {
+    display: none;            /* shown on liftoff */
+    flex-shrink: 0;           /* hold 16:9 when the stack is squeezed */
+    width: 240px;
+    height: 135px;           /* 16:9 */
+    border: 1px solid #00f;
+    border-radius: 10px;
+    background: transparent;  /* the WebGL chase view shows through */
+    box-sizing: border-box;
+    position: relative;
+    pointer-events: none;
+}
+
+#rocket-cam-label {
+    position: absolute;
+    top: 4px;
+    left: 8px;
+    font-size: 0.7rem;
+    font-weight: bold;
+    color: #00f;
+    letter-spacing: 0.1em;
+    text-shadow: 0 0 4px #000;
+}
+
+.hud-item {
+    font-size: 1.2rem;
+    font-weight: bold;
+}
+
+.panel {
+    background: rgba(0, 0, 0, 0.7);
+    padding: 15px;
+    border-radius: 10px;
+    border: 1px solid #00f;
+    pointer-events: auto;
+    max-width: 300px;
+}
+
+/* Pinned bottom-right rather than left in the column flow. #ui-container is a
+   flex column, so an in-flow #controls has its height added to the top-left
+   stack's — and once the quiz expands that stack, the sum exceeds the viewport
+   and the LAUNCH/RESET buttons are pushed off the bottom edge. The two sit in
+   opposite corners, so they have no business sharing a vertical flow. */
+#controls {
+    position: absolute;
+    right: 20px;
+    bottom: 20px;
+}
+
+/* In the top-left stack, below the HUD. Not absolutely positioned: the stack
+   grows by the height of #rocket-cam when that appears on liftoff, so a pinned
+   top offset overlapped the HUD for the whole flight. */
+#info-panel {
+    align-self: flex-start;
+    /* Absorbs the squeeze: min-height:0 lets a flex item shrink below its
+       content height, so a short viewport scrolls the panel instead of
+       pushing the quiz past the bottom edge. */
+    min-height: 0;
+    overflow-y: auto;
+    /* The vertical scrollbar eats width and would otherwise trigger a second,
+       horizontal one. */
+    overflow-x: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: #00f transparent;
+}
+
+#info-panel::-webkit-scrollbar {
+    width: 8px;
+}
+
+#info-panel::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#info-panel::-webkit-scrollbar-thumb {
+    background: #00f;
+    border-radius: 4px;
+}
+
+h3 {
+    margin-top: 0;
+    color: #00f;
+    text-transform: uppercase;
+    font-size: 1rem;
+}
+
+.control-group {
+    margin-bottom: 10px;
+}
+
+input[type="range"] {
+    width: 100%;
+}
+
+button {
+    width: 100%;
+    padding: 10px;
+    margin-top: 10px;
+    background: #00f;
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+button:hover {
+    background: #0055ff;
+}
+
+#reset-btn {
+    background: #444;
+}
+
+#graph-container {
+    width: 100%;
+    height: 150px;
+    background: #111;
+    margin-top: 10px;
+    border: 1px solid #333;
+    /* No global border-box reset here, so width:100% plus the 1px border
+       overflows the panel by 2px and makes it scroll sideways. */
+    box-sizing: border-box;
+}
+
+canvas#physics-graph {
+    width: 100%;
+    height: 100%;
+}
+
+/* ── Result Panel ─────────────────────────────────────────────────── */
+
+#result-panel {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+}
+
+#result-panel.visible {
+    display: flex;
+}
+
+.result-content {
+    background: rgba(4, 8, 30, 0.97);
+    border: 2px solid #2255ee;
+    border-radius: 14px;
+    padding: 28px 36px;
+    min-width: 340px;
+    max-width: 420px;
+    width: 90%;
+    box-shadow: 0 0 40px rgba(34, 85, 238, 0.4);
+}
+
+.result-content h2 {
+    margin: 0 0 20px;
+    color: #4499ff;
+    font-size: 1.1rem;
+    text-align: center;
+    letter-spacing: 0.12em;
+}
+
+.result-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 22px;
+}
+
+.result-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    border-bottom: 1px solid rgba(34, 85, 238, 0.2);
+    padding-bottom: 8px;
+}
+
+.result-label {
+    color: #8899cc;
+    font-size: 0.85rem;
+}
+
+.result-value {
+    color: #ffffff;
+    font-size: 1rem;
+    font-weight: bold;
+    font-family: 'Courier New', monospace;
+}
+
+/* CLOSE dismisses the panel and leaves the rocket coasting; RESET is the one
+   that puts it back on the pad. Two buttons side by side, so the global
+   `button { width: 100% }` has to be overridden or they overflow the row. */
+.result-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.result-actions button {
+    width: auto;
+    flex: 1 1 0;
+    margin-top: 0;
+}
+
+#result-close-btn {
+    background: #1144cc;
+    margin-top: 0;
+}
+
+#result-close-btn:hover {
+    background: #2277ff;
+}
+
+#result-reset-btn {
+    background: #444;
+}
+
+#result-reset-btn:hover {
+    background: #666;
+}
+
+/* ── Trial build ─────────────────────────────────────── */
+
+/* Deliberately unmissable and never dismissable: a trial build must not be
+   mistaken for the real module, or quietly deployed to a classroom. */
+#trial-badge {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    z-index: 50;
+    padding: 6px 12px;
+    background: rgba(85, 51, 17, 0.92);
+    border: 1px solid #aa7733;
+    border-radius: 6px;
+    color: #ffcc66;
+    font-size: 0.72rem;
+    font-weight: bold;
+    letter-spacing: 0.14em;
+    pointer-events: none;
+}
+
+/* The same overlay treatment as the results panel, so it reads as part of the
+   module rather than a dialog bolted on. */
+#trial-end-panel {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.55);
+}
+
+#trial-end-panel[hidden] {
+    display: none;
+}
+
+#trial-end-panel h2 {
+    color: #ffcc66;
+}
+
+#trial-end-panel p {
+    margin: 0 0 18px;
+    color: #ccddff;
+    font-size: 0.92rem;
+    line-height: 1.5;
+    text-align: center;
+}
+
+.trial-end-action {
+    display: block;
+    padding: 10px;
+    background: #1144cc;
+    border-radius: 5px;
+    color: #fff;
+    font-weight: bold;
+    text-align: center;
+    text-decoration: none;
+}
+/* ── Challenge Card ─────────────────────────────────────────────── */
+
+#challenge-card {
+    border-color: #ffaa22;
+    align-self: flex-end;
+    margin-bottom: 10px;
+}
+
+#challenge-card h3 {
+    color: #ffaa22;
+}
+
+.challenge-target {
+    font-size: 0.85rem;
+    color: #ffcc66;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(255, 170, 34, 0.2);
+}
+
+#attempt-count {
+    font-size: 0.8rem;
+    color: #888899;
+    margin-top: 8px;
+}
+
+/* ── Challenge Score in Result Panel ───────────────────────────── */
+
+#challenge-results {
+    margin-top: 16px;
+}
+
+.challenge-divider {
+    border: none;
+    border-top: 1px solid rgba(255, 170, 34, 0.3);
+    margin: 0 0 10px;
+}
+
+.challenge-score-title {
+    color: #ffaa22;
+    text-align: center;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin: 0 0 10px;
+}
+
+.challenge-score-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.challenge-score-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(34, 85, 238, 0.15);
+    font-size: 0.82rem;
+}
+
+.challenge-score-row.passed .challenge-icon { color: #44ff88; font-weight: bold; }
+.challenge-score-row.failed .challenge-icon { color: #ff5544; font-weight: bold; }
+
+.challenge-score-label {
+    flex: 1;
+    color: #8899cc;
+}
+
+.challenge-score-values {
+    color: #ffffff;
+    font-family: 'Courier New', monospace;
+    font-size: 0.8rem;
+}
+
+.challenge-delta {
+    color: #6677aa;
+    font-size: 0.75rem;
+}
+
+.attempt-display {
+    text-align: center;
+    color: #6677aa;
+    font-size: 0.8rem;
+    margin-top: 4px;
+}

@@ -6,8 +6,10 @@ import * as THREE from 'three';
 // XRHandler renders the chase view into each frame. Not registered for
 // raycasting — it has no interactive elements.
 export class VRCameraPanel {
-    constructor(worldW = 0.70, worldH = 0.394) {   // ~16:9
-        this.renderTarget = new THREE.WebGLRenderTarget(512, 288);
+    constructor(worldW = 0.95, worldH = 0.534) {   // ~16:9
+        // 768x432 rather than 512x288: the panel is large enough in the
+        // headset that the lower resolution reads as soft.
+        this.renderTarget = new THREE.WebGLRenderTarget(768, 432);
         this.renderTarget.texture.colorSpace = THREE.SRGBColorSpace;
         this.renderTarget.texture.minFilter = THREE.LinearFilter;
         this.renderTarget.texture.magFilter = THREE.LinearFilter;

@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<!--
+  THROWAWAY XR SMOKE TEST — delete once the Quest 3 black-screen bug is found.
+
+  Open on the headset at:  https://<laptop-ip>:5174/dev/xr-smoke.html
+
+  It is deliberately not the app: bare three.js, a VRButton, two cubes and a
+  floor grid. Nothing of MainScene, XRHandler or the rocket is involved, so if
+  this renders in the headset and the module does not, the fault is ours.
+
+  Load it TWICE:
+
+    1. /dev/xr-smoke.html            default renderer options
+    2. /dev/xr-smoke.html?app=1      the module's exact renderer options
+
+  - Red cube in BOTH  -> immersive rendering is fine; the module's own scene
+                         is at fault (placement, fog, materials).
+  - Red cube in (1) only -> one of the module's renderer options breaks the
+                         headset. Narrow it with ?alpha=1, ?nobind=1, ?tone=1.
+  - Red cube in NEITHER -> immersive rendering itself never happens. Nothing
+                         in our scene code could have caused it.
+
+  The readout at the top of the flat page keeps counting while you are in VR,
+  so take the headset off and read it after entering and exiting.
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XR smoke test</title>
+    <style>
+        body { margin: 0; background: #000; color: #0f0;
+               font: 14px/1.5 monospace; }
+        #readout { position: fixed; top: 0; left: 0; z-index: 10;
+                   padding: 12px 16px; background: rgba(0,0,0,.85);
+                   white-space: pre; max-width: 95vw; }
+        #readout b { color: #fff; }
+        .bad { color: #f55; }
+    </style>
+</head>
+<body>
+<div id="readout">starting…</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { VRButton } from 'three/addons/webxr/VRButton.js';
+
+const flags   = new URLSearchParams(location.search);
+const useAll  = flags.has('app');
+const opt = {
+    // alpha + a fully transparent clear colour, as MainScene does
+    alpha:  useAll || flags.has('alpha'),
+    // delete window.XRWebGLBinding, as MainScene does — this forces three.js
+    // down the XRWebGLLayer path instead of using a projection layer
+    nobind: useAll || flags.has('nobind'),
+    // ACES tone mapping + sRGB output + shadow maps, as MainScene does
+    tone:   useAll || flags.has('tone'),
+};
+
+const errors = [];
+addEventListener('error', e => errors.push(`${e.message} @ ${e.filename}:${e.lineno}`));
+addEventListener('unhandledrejection', e => errors.push(`unhandled rejection: ${e.reason}`));
+
+if (opt.nobind) delete window.XRWebGLBinding;
+
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 100);
+camera.position.set(0, 1.6, 3);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: opt.alpha });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+if (opt.alpha) renderer.setClearColor(0x000000, 0);
+if (opt.tone) {
+    renderer.shadowMap.enabled  = true;
+    renderer.shadowMap.type     = THREE.PCFSoftShadowMap;
+    renderer.outputColorSpace   = THREE.SRGBColorSpace;
+    renderer.toneMapping        = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
+}
+renderer.xr.enabled = true;
+document.body.appendChild(renderer.domElement);
+document.body.appendChild(VRButton.createButton(renderer, { optionalFeatures: ['hand-tracking'] }));
+
+// MeshBasicMaterial on purpose: visible with no lights, so a lighting mistake
+// cannot be confused with a rendering failure.
+const cube = (x, y, z, color) => {
+    const m = new THREE.Mesh(
+        new THREE.BoxGeometry(0.5, 0.5, 0.5),
+        new THREE.MeshBasicMaterial({ color }),
+    );
+    m.position.set(x, y, z);
+    scene.add(m);
+    return m;
+};
+
+// Straight ahead at eye height — what you should see the moment you enter VR.
+const red = cube(0, 1.6, -2, 0xff2222);
+// Exactly where this module parks its rocket. If only this one is visible,
+// the module's scene is simply below the floor.
+cube(0, -1.5, -2.5, 0x22ff22);
+// Floor plane, so "below the floor" is obvious rather than inferred.
+const grid = new THREE.GridHelper(10, 10, 0x8888ff, 0x444488);
+scene.add(grid);
+
+let frames = 0, xrFrames = 0;
+renderer.setAnimationLoop(() => {
+    frames++;
+    if (renderer.xr.isPresenting) xrFrames++;
+    red.rotation.y += 0.01;
+    renderer.render(scene, camera);
+    if (frames % 15 === 0) report();
+});
+
+function report() {
+    const session = renderer.xr.getSession?.();
+    const c = renderer.domElement;
+    document.getElementById('readout').innerHTML = [
+        `<b>flags</b>      alpha=${opt.alpha} nobind=${opt.nobind} tone=${opt.tone}`,
+        `<b>three</b>      ${THREE.REVISION}`,
+        `<b>presenting</b> ${renderer.xr.isPresenting}`,
+        `<b>frames</b>     total ${frames} | while presenting ${xrFrames}`,
+        `<b>canvas</b>     ${c.width}x${c.height}   window ${innerWidth}x${innerHeight}`,
+        `<b>refspace</b>   ${renderer.xr.getReferenceSpace() ? 'acquired' : 'NONE'}`,
+        `<b>blendmode</b>  ${session?.environmentBlendMode ?? '—'}`,
+        `<b>XRWebGLBinding</b> ${typeof window.XRWebGLBinding}`,
+        errors.length
+            ? `<span class="bad"><b>errors</b>\n  ${errors.join('\n  ')}</span>`
+            : `<b>errors</b>     none`,
+    ].join('\n');
+}
+report();
+
+addEventListener('resize', () => {
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

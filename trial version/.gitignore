@@ -1,0 +1,8 @@
+# This is a standalone project, so it carries its own ignores. The parent's
+# rules containing a slash — like dev/certs/ — are anchored to the parent's
+# root and do not reach in here; only its slash-free rules (node_modules/) do.
+node_modules/
+
+# Dev-only TLS material, regenerated per machine by dev/lanCert.js on every
+# vite run — never committed, never shipped.
+dev/certs/

@@ -4,17 +4,57 @@ import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { asset } from '../assetPath.js';
 
+// Space transition. Ground-level fog gives the pad its depth, but a rocket
+// that coasts on after burnout would hang in flat blue with nothing moving,
+// so the fog fades out as it climbs from SPACE_START to SPACE_START +
+// SPACE_SPAN metres. The page background is #000, so the far end of that ramp
+// is genuinely black sky.
+//
+// Burnout altitude is frame-rate dependent, because fuel burns per frame
+// rather than per second: a default launch (10 kg, 150 N) cuts out around
+// 29 m at 17 m/s on a 60 Hz display and around 13 m at 12 m/s on a 90 Hz one.
+// These thresholds sit just above that, so the sky starts clearing shortly
+// into the coast and is black within about ten seconds of it. A harder launch
+// gets there mid-burn, which is as it should be.
+const FOG_DENSITY = 0.008;
+const SPACE_START = 30;
+const SPACE_SPAN  = 170;
+
+// Tone-mapping exposure for the main render, and for the chase view — see
+// setChaseLight(). The chase view is a close-up of a near-black model against
+// black, and needs roughly double the exposure of the wide shot to read.
+const BASE_EXPOSURE  = 1.0;
+const CHASE_EXPOSURE = 2.4;
+
 export class MainScene {
     constructor() {
         this.scene = new THREE.Scene();
-        this.scene.fog = new THREE.FogExp2(0x08091a, 0.008);
+        this.scene.fog = new THREE.FogExp2(0x08091a, FOG_DENSITY);
 
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         this.camera.position.set(0, 1.6, 5);
         this.camera.lookAt(0, 1.6, 0);
         this._tmpSize = new THREE.Vector2();
 
-        delete window.XRWebGLBinding;
+        // Do NOT delete window.XRWebGLBinding here. It reads as a harmless way
+        // to push three.js onto the older XRWebGLLayer path — it is guarded by
+        // a `typeof` check (WebXRManager.js) so it throws nothing — but it is
+        // what made every immersive session on a Quest 3 render pure black.
+        //
+        // VRButton hardcodes 'layers' into the session's optionalFeatures, and
+        // the headset grants it. Without XRWebGLBinding, three.js decides
+        // layers are unsupported and calls updateRenderState({ baseLayer }),
+        // which the spec forbids on a session that was granted 'layers':
+        //
+        //   Failed to execute 'updateRenderState' on 'XRSession':
+        //   Can't use baseLayer with layers feature requested
+        //
+        // That rejects inside WebXRManager.setSession, so animation.start() is
+        // never reached: the session presents, the frame loop never runs, and
+        // the student sees nothing at all — no rocket, no panels, no hands.
+        //
+        // None of it is visible on a desktop, which never gets a session and
+        // never has the feature granted. Verified on a Quest 3 on 2026-09-22.
 
         this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -25,7 +65,7 @@ export class MainScene {
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         this.renderer.outputColorSpace = THREE.SRGBColorSpace;
         this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        this.renderer.toneMappingExposure = 1.0;
+        this.renderer.toneMappingExposure = BASE_EXPOSURE;
 
 
         document.body.appendChild(this.renderer.domElement);
@@ -123,13 +163,14 @@ export class MainScene {
         const starGeo = new THREE.BufferGeometry();
         starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPos, 3));
         starGeo.setAttribute('size',     new THREE.Float32BufferAttribute(starSizes, 1));
-        this.scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({
+        this.stars = new THREE.Points(starGeo, new THREE.PointsMaterial({
             color: 0xffffff,
             size: 0.7,
             sizeAttenuation: true,
             transparent: true,
             opacity: 0.85,
-        })));
+        }));
+        this.scene.add(this.stars);
 
         // // Ground — dark concrete-like plane
         // const ground = new THREE.Mesh(
@@ -208,13 +249,20 @@ export class MainScene {
         this.rocketGroup.position.set(0, -1.45, -2.5);
         this.scene.add(this.rocketGroup);
 
-        // Chase camera — mounted below/behind the rocket, angled up at its
-        // body. Parented to rocketGroup so it tracks the rocket automatically;
-        // the rocket only translates, so the framing stays fixed for the whole
-        // flight (exhaust + star parallax convey motion).
-        this.chaseCamera = new THREE.PerspectiveCamera(60, 16 / 9, 0.05, 1000);
+        // Chase camera — a three-quarter view from behind and just below the
+        // rocket's midpoint, far enough back that the whole 2 m model reads as
+        // a rocket. Parented to rocketGroup so it tracks the rocket
+        // automatically; the rocket only translates, so the framing stays fixed
+        // for the whole flight (exhaust + star parallax convey motion).
+        //
+        // Mounted close underneath it instead, the perspective foreshortens the
+        // body away to nothing and the monitor shows an unreadable cluster of
+        // fins. The 55° vertical FOV at ~3 m puts about 3.1 m in frame, so the
+        // model occupies roughly two thirds of the height with room for the
+        // exhaust below it.
+        this.chaseCamera = new THREE.PerspectiveCamera(55, 16 / 9, 0.05, 1000);
         this.chaseCamera.position
-            .set(0.8, -1.2, 2.2)
+            .set(1.5, 0.45, 2.6)
             .applyAxisAngle(new THREE.Vector3(0, 1, 0), ROCKET_YAW);
         this.rocketGroup.add(this.chaseCamera);
         this.rocketGroup.updateMatrixWorld(true);
@@ -223,6 +271,36 @@ export class MainScene {
         this.chaseCamera.lookAt(
             this.rocketGroup.localToWorld(new THREE.Vector3(0, 1.0, 0))
         );
+
+        // Fill light for the chase view only. The scene is lit for a night
+        // launch — a dim ambient over a near-black rocket body — which reads
+        // well at pad distance but leaves the monitor showing a silhouette.
+        //
+        // Parented to the chase camera so it lights whatever the monitor is
+        // pointed at, and offset up and to one side of the lens rather than
+        // sitting on it, so the body keeps some shading instead of going flat.
+        // A PointLight, not a DirectionalLight: a directional's target would
+        // stay at the world origin and swing as the rocket climbed.
+        //
+        // It is switched on only for the duration of a chase render (see
+        // setChaseLight), so the main view — where the same rocket sits on a
+        // deliberately dark pad — is unaffected.
+        this._chaseLight = new THREE.PointLight(0xdce8ff, 22, 16, 2);
+        this._chaseLight.position.set(0.5, 0.8, 0.5);
+        this._chaseLight.visible = false;
+        this.chaseCamera.add(this._chaseLight);
+
+        // TEMPORARY DIAGNOSTIC — remove once the Quest 3 black screen is
+        // settled. ?procrocket=1 builds the rocket from primitives instead of
+        // loading Rocketv2.glb, leaving the model as the only difference
+        // between two otherwise identical scenes. If VR renders with the flag
+        // and not without it, the GLB — or a shader it needs compiled for the
+        // XR render target — is the cause rather than the scene itself.
+        // examLink strips only user_id and exam_id, so the flag survives load.
+        if (new URLSearchParams(location.search).has('procrocket')) {
+            this._initProceduralRocket();
+            return;
+        }
 
         // Rocketv2.glb is Draco-compressed (KHR_draco_mesh_compression is in
         // extensionsRequired), so GLTFLoader throws on it without a decoder.
@@ -282,6 +360,57 @@ export class MainScene {
         });
     }
 
+    /**
+     * TEMPORARY DIAGNOSTIC — see the ?procrocket branch in _initRocket.
+     *
+     * A rocket built from primitives, to the same contract as the loaded one:
+     * 2 m tall, base seated at y = 0 of rocketGroup, shadows on. Deliberately
+     * MeshStandardMaterial rather than MeshBasicMaterial, so the experiment
+     * changes the model and nothing else — an unlit stand-in would also be
+     * testing the lighting.
+     */
+    _initProceduralRocket() {
+        const hullMat = new THREE.MeshStandardMaterial({
+            color: 0xb8c4d4, roughness: 0.45, metalness: 0.55,
+        });
+        const trimMat = new THREE.MeshStandardMaterial({
+            color: 0xd9452f, roughness: 0.5, metalness: 0.2,
+        });
+
+        const rocket = new THREE.Group();
+
+        // skirt 0 → 0.22, hull 0.22 → 1.45, nose 1.45 → 2.00
+        const skirt = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.36, 0.22, 24), trimMat);
+        skirt.position.y = 0.11;
+        rocket.add(skirt);
+
+        const hull = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 1.23, 24), hullMat);
+        hull.position.y = 0.835;
+        rocket.add(hull);
+
+        const nose = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.55, 24), trimMat);
+        nose.position.y = 1.725;
+        rocket.add(nose);
+
+        for (let i = 0; i < 3; i++) {
+            const angle = (i / 3) * Math.PI * 2;
+            const fin = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.45, 0.3), trimMat);
+            fin.position.set(Math.sin(angle) * 0.3, 0.445, Math.cos(angle) * 0.3);
+            fin.rotation.y = -angle;
+            rocket.add(fin);
+        }
+
+        rocket.traverse(child => {
+            if (child.isMesh) {
+                child.castShadow = true;
+                child.receiveShadow = true;
+            }
+        });
+
+        this.rocketGroup.add(rocket);
+        console.info('[MainScene] procrocket: using the procedural rocket, Rocketv2.glb not loaded');
+    }
+
     // ── Runtime updates ────────────────────────────────────────────────
 
     updateRocket(altitude, isThrusting) {
@@ -290,16 +419,51 @@ export class MainScene {
         // Pad glow when thrusting
         this._padLight.intensity = isThrusting ? 2.5 : 0;
 
+        // Clear the sky as the rocket leaves the atmosphere. Runs in XR too:
+        // it is the world changing, not the camera. Reset paths call
+        // updateRocket(0, false), which puts t back to 0 and restores the pad.
+        const t = THREE.MathUtils.clamp((altitude - SPACE_START) / SPACE_SPAN, 0, 1);
+        this.scene.fog.density = FOG_DENSITY * (1 - t);
+
         // Desktop camera follow (ignored in XR — headset controls the camera)
         if (!this.renderer.xr.isPresenting) {
+            // Carry the star dome along, keeping the rocket a few hundred
+            // metres inside its 450-unit radius so it never climbs out of the
+            // stars. Only here: in XR the headset stays at the pad, and a sky
+            // that flies away from a standing student is worse than a fixed one.
+            this.stars.position.y = (altitude - SPACE_START) * t;
             if (altitude > 5) {
-                this.camera.position.y = 1.6 + altitude * 0.8;
+                // Trail at 0.8x down low so the pad visibly drops away, then
+                // blend to keeping pace: at a flat 0.8x the coast is
+                // unbounded and the rocket recedes into a speck, which wastes
+                // the star field it is supposed to be flying through.
+                this.camera.position.y = 1.6 + altitude * (0.8 + 0.2 * t);
                 this.camera.lookAt(0, altitude, 0);
             } else {
                 this.camera.position.set(0, 1.6, 5);
                 this.camera.lookAt(0, 1.6, 0);
             }
         }
+    }
+
+    /**
+     * Light the rocket for a chase render, and put it back afterwards.
+     *
+     * Both chase paths must bracket their render with this: the desktop inset
+     * below, and XRHandler.renderCameraView for the VR monitor. Left on, it
+     * would brighten the rocket in the main view too and undo the night-launch
+     * lighting; left off, the monitor shows a silhouette.
+     *
+     * Exposure as well as the fill light, because the fill light alone cannot
+     * do it: the rocket's darkest material has a base colour of 0.03, so its
+     * diffuse response to any amount of light is nearly nil, and raising the
+     * lamp further only blows out the speculars. Exposure multiplies the whole
+     * chase image before tone mapping, which lifts the body itself. ACES rolls
+     * the highlights off, so the bright trim does not clip.
+     */
+    setChaseLight(on) {
+        this._chaseLight.visible = on;
+        this.renderer.toneMappingExposure = on ? CHASE_EXPOSURE : BASE_EXPOSURE;
     }
 
     /**
@@ -325,7 +489,9 @@ export class MainScene {
         r.setScissorTest(true);
         r.setScissor(x, y, w, h);
         r.setViewport(x, y, w, h);
+        this.setChaseLight(true);
         r.render(this.scene, this.chaseCamera);
+        this.setChaseLight(false);
 
         // Restore the full-frame viewport/scissor for the next main render.
         r.setScissorTest(false);

@@ -46,6 +46,22 @@ export class XRHandler {
         //
         // local-floor, bounded-floor and layers are not listed — VRButton
         // already requests all three as optional features.
+        //
+        // Origin at the head, not the floor. Every panel position in this file
+        // is written as an offset from the viewer's eye — the HUD half a metre
+        // below it, the monitor slightly above — but three.js defaults to
+        // local-floor, where y = 0 is the physical floor and the eye is ~1.6 m
+        // above it. That drops the entire layout to around the student's feet,
+        // 50-57° below horizontal and outside the headset's ~±45° vertical
+        // field of view: entering VR shows a completely black scene, because
+        // the star dome is erased by fog and there is no ground or background
+        // to see either. None of it shows on desktop, where the camera sits
+        // 5 m back and the same offsets subtend a comfortable ~22°.
+        //
+        // 'local' needs no feature request — it is always available to an
+        // immersive session — and it must be set before the session starts.
+        this.renderer.xr.setReferenceSpaceType('local');
+
         const vrButton = VRButton.createButton(this.renderer, {
             optionalFeatures: ['hand-tracking'],
         });
@@ -140,6 +156,7 @@ export class XRHandler {
             this._challengeManager,
             this.callbacks.onNext,
             this.callbacks.onSubmit,
+            () => this._onResultReset(),
         );
         this.resultPanel.mesh.position.set(0, -0.2, -1.3);
         this.resultPanel.mesh.visible = false;
@@ -275,12 +292,48 @@ export class XRHandler {
         const rt = this.cameraPanel.renderTarget;
         chaseCamera.aspect = rt.width / rt.height;
         chaseCamera.updateProjectionMatrix();
+        // Restore whatever was bound, rather than assuming null. Inside an XR
+        // frame three.js has the session's own framebuffer bound — WebXRManager
+        // binds it before invoking the animation callback — so
+        // setRenderTarget(null) does not mean "back to normal", it means the
+        // canvas. Every later draw in the frame, the main render included, then
+        // goes somewhere the headset compositor never reads: the view freezes on
+        // the last good frame while the loop keeps running and the audio keeps
+        // playing. It begins the instant the chase cam switches on, one frame
+        // after liftoff. Verified on a Quest 3 on 2026-09-22.
+        // Opt this one pass out of XR. While a session is presenting,
+        // WebGLRenderer.render() throws away the camera it is given and
+        // substitutes the headset's ArrayCamera — so this drew the student's own
+        // view into the monitor instead of the chase view, with the XR camera's
+        // per-eye viewports applied to a 768x432 target, which reads as a
+        // fragment of the scene. Turning xr.enabled off for the call is the
+        // supported way to render a secondary view mid-frame.
+        //
+        // It also stops updateCamera() reading this camera's near/far (0.05 vs
+        // the main camera's 0.1) and calling session.updateRenderState twice a
+        // frame to thrash the session's depth range.
+        //
+        // None of this shows on desktop, where the inset renders through a
+        // different path that only runs when NOT presenting.
+        const wasXrEnabled = this.renderer.xr.enabled;
+        this.renderer.xr.enabled = false;
+
+        const previousTarget = this.renderer.getRenderTarget();
         this.renderer.setRenderTarget(rt);
         this.renderer.render(scene, chaseCamera);
-        this.renderer.setRenderTarget(null);
+        this.renderer.setRenderTarget(previousTarget);
+
+        this.renderer.xr.enabled = wasXrEnabled;
     }
 
+    // Dismiss the panel only. The rocket is still coasting when the results
+    // appear, so closing them is how a student gets an unobstructed view of it.
     _onResultClose() {
+        this.hideResults();
+    }
+
+    // What closing used to do: back to the pad, ready to fly again.
+    _onResultReset() {
         this.callbacks.onReset();
     }
 

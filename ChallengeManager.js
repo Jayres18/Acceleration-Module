@@ -3,8 +3,15 @@ const TARGETS_MAP = [
     { param: 'target_max_velocity',  key: 'maxVelocity',     label: 'Max Velocity',     unit: 'm/s',  decimals: 2 },
     { param: 'target_peak_altitude', key: 'peakAltitude',    label: 'Peak Altitude',    unit: 'm',    decimals: 2 },
     { param: 'target_avg_accel',     key: 'avgAcceleration', label: 'Avg Acceleration', unit: 'm/s²', decimals: 2 },
-    { param: 'target_flight_time',   key: 'flightTime',      label: 'Flight Time',      unit: 's',    decimals: 2 },
 ];
+
+// `target_flight_time` is deliberately absent, though the results panel still
+// reports the figure. Fuel burns half a percent per frame and the flight's
+// numbers are captured at burnout, so every flight lasts exactly 200 frames —
+// 3.33 s at 60 Hz — whatever the student does with the sliders. As a target it
+// grades the refresh rate rather than the physics, and it would do so silently.
+// Left out, a question carrying nothing else reports "no usable targets" and
+// says which question it was.
 
 /**
  * Read a question's `question_properties_values` into a plain object.

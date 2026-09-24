@@ -1,0 +1,444 @@
+/**
+ * The save-status line interpolates a message that came from the server, so it
+ * is escaped rather than trusted — the exam payload is free-form JSON that
+ * nothing validates on the way in.
+ */
+function escapeHtml(str) {
+    const el = document.createElement('div');
+    el.textContent = String(str ?? '');
+    return el.innerHTML;
+}
+
+export class UIManager {
+    constructor(callbacks, challengeManager = null) {
+        this.callbacks = callbacks;
+        this.challengeManager = challengeManager;
+        this.initElements();
+        this.initEvents();
+        this.initGraph();
+        this._buildChallengeCard();
+    }
+
+    initElements() {
+        this.velocityVal = document.getElementById('velocity-val');
+        this.accelVal    = document.getElementById('accel-val');
+        this.altitudeVal = document.getElementById('altitude-val');
+        this.fuelVal     = document.getElementById('fuel-val');
+
+        this.thrustSlider = document.getElementById('thrust-slider');
+        this.thrustLabel  = document.getElementById('thrust-label');
+        this.massSlider   = document.getElementById('mass-slider');
+        this.massLabel    = document.getElementById('mass-label');
+        this.timeSlider   = document.getElementById('time-slider');
+        this.timeLabel    = document.getElementById('time-label');
+
+        this.launchBtn = document.getElementById('launch-btn');
+        this.resetBtn  = document.getElementById('reset-btn');
+
+        this.quizContainer = document.getElementById('quiz-container');
+        this.quizOpts      = document.querySelectorAll('.quiz-opt');
+
+        this.graphCanvas = document.getElementById('physics-graph');
+        this.graphCtx    = this.graphCanvas.getContext('2d');
+
+        this.resultPanel      = document.getElementById('result-panel');
+        this.resLaunchForce   = document.getElementById('res-launch-force');
+        this.resRocketMass    = document.getElementById('res-rocket-mass');
+        this.resMaxVelocity   = document.getElementById('res-max-velocity');
+        this.resAvgAccel      = document.getElementById('res-avg-accel');
+        this.resPeakAltitude  = document.getElementById('res-peak-altitude');
+        this.resFlightTime    = document.getElementById('res-flight-time');
+        this.resDistance      = document.getElementById('res-distance');
+        this.resultCloseBtn   = document.getElementById('result-close-btn');
+        this.resultResetBtn   = document.getElementById('result-reset-btn');
+        this.trialBadge       = document.getElementById('trial-badge');
+        this.trialEndPanel    = document.getElementById('trial-end-panel');
+        this.challengeResults = document.getElementById('challenge-results');
+    }
+
+    initEvents() {
+        this.thrustSlider.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            this.thrustLabel.textContent = val;
+            this.callbacks.onThrustChange(val);
+        });
+
+        this.massSlider.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            this.massLabel.textContent = val;
+            this.callbacks.onMassChange(val);
+        });
+
+        this.timeSlider.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            this.timeLabel.textContent = val.toFixed(1);
+            this.callbacks.onTimeChange(val);
+        });
+
+        this.launchBtn.addEventListener('click', () => {
+            this.callbacks.onLaunch();
+            this.launchBtn.disabled = true;
+        });
+
+        // No `launchBtn.disabled = false` here: resetUI() already re-enables it
+        // as part of onReset, and re-enabling it again afterwards would undo the
+        // trial lock that onReset applies last — handing out a sixth flight.
+        this.resetBtn.addEventListener('click', () => {
+            this.callbacks.onReset();
+        });
+
+        // CLOSE dismisses the panel and nothing else. The rocket is still
+        // coasting when the results appear, and resetting here took that away
+        // with no way to watch it. LAUNCH stays disabled: the flight has not
+        // ended, and re-launching mid-coast would re-arm an engine with no fuel.
+        this.resultCloseBtn.addEventListener('click', () => {
+            // In exam mode, navigation is handled only by the Next/Submit buttons
+            if (this.challengeManager?.isExamMode) return;
+            this.hideResults();
+        });
+
+        // RESET is what CLOSE used to do: back to the pad, ready to fly again.
+        // Same as above — onReset owns the LAUNCH button's state.
+        this.resultResetBtn.addEventListener('click', () => {
+            if (this.challengeManager?.isExamMode) return;
+            this.callbacks.onReset();
+        });
+
+        this.quizOpts.forEach(opt => {
+            opt.addEventListener('click', () => {
+                const isCorrect = opt.getAttribute('data-correct') === 'true';
+                if (isCorrect) {
+                    opt.style.background = 'green';
+                    alert('Correct! Acceleration is inversely proportional to mass (a = F/m).');
+                } else {
+                    opt.style.background = 'red';
+                    alert('Try again. Think about Newton\'s Second Law.');
+                }
+            });
+        });
+    }
+
+    initGraph() {
+        this.graphData = [];
+        this.maxDataPoints = 100;
+    }
+
+    _buildChallengeCard() {
+        if (!this.challengeManager?.isActive) return;
+
+        const card = document.createElement('div');
+        card.id = 'challenge-card';
+        card.className = 'panel';
+
+        const isExam = this.challengeManager.isExamMode;
+        const progressHTML = isExam
+            ? (() => {
+                  const { current, total } = this.challengeManager.questionProgress;
+                  return `<div id="question-progress">Question ${current} of ${total}</div>`;
+              })()
+            : '';
+
+        const targets = this.challengeManager.targets
+            .map(t => `<div class="challenge-target">≥ ${t.value.toFixed(t.decimals)} ${t.unit} — ${t.label}</div>`)
+            .join('');
+
+        card.innerHTML = `
+            <h3>Challenge Targets</h3>
+            ${progressHTML}
+            <div id="challenge-targets-list">${targets}</div>
+            <div id="attempt-count">Attempt: 0</div>
+        `;
+
+        const controls = document.getElementById('controls');
+        controls.parentNode.insertBefore(card, controls);
+
+        this.challengeCard        = card;
+        this.attemptCountEl       = card.querySelector('#attempt-count');
+        this._questionProgressEl  = card.querySelector('#question-progress');
+        this._challengeTargetsEl  = card.querySelector('#challenge-targets-list');
+    }
+
+    updateHUD(state) {
+        this.velocityVal.textContent = state.velocity.toFixed(2);
+        this.accelVal.textContent    = state.acceleration.toFixed(2);
+        this.altitudeVal.textContent = state.altitude.toFixed(2);
+        this.fuelVal.textContent     = state.fuel.toFixed(1);
+
+        // Powered flight only. The coast after burnout is a flat zero that
+        // would scroll the burn off the far end of the window.
+        if (state.isLaunched && !state.isCoasting) {
+            this.quizContainer.style.display = 'block';
+            this.graphData.push(state.acceleration);
+            if (this.graphData.length > this.maxDataPoints) this.graphData.shift();
+            this.drawGraph();
+        }
+    }
+
+    drawGraph() {
+        const ctx    = this.graphCtx;
+        const width  = this.graphCanvas.width;
+        const height = this.graphCanvas.height;
+
+        ctx.clearRect(0, 0, width, height);
+        ctx.strokeStyle = '#00f';
+        ctx.lineWidth   = 2;
+        ctx.beginPath();
+
+        const step = width / this.maxDataPoints;
+        for (let i = 0; i < this.graphData.length; i++) {
+            const x = i * step;
+            const y = height - ((this.graphData[i] + 10) / 30) * height;
+            if (i === 0) ctx.moveTo(x, y);
+            else         ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+
+        ctx.fillStyle = '#fff';
+        ctx.font      = '10px Arial';
+        ctx.fillText('Accel vs Time', 5, 12);
+    }
+
+    showResults(results, challengeScore = null) {
+        this.resLaunchForce.textContent  = `${results.launchForce.toFixed(1)} N`;
+        this.resRocketMass.textContent   = `${results.rocketMass.toFixed(1)} kg`;
+        this.resMaxVelocity.textContent  = `${results.maxVelocity.toFixed(2)} m/s`;
+        this.resAvgAccel.textContent     = `${results.avgAcceleration.toFixed(2)} m/s²`;
+        this.resPeakAltitude.textContent = `${results.peakAltitude.toFixed(2)} m`;
+        this.resFlightTime.textContent   = `${results.flightTime.toFixed(2)} s`;
+        this.resDistance.textContent     = `${results.distanceTraveled.toFixed(2)} m`;
+
+        if (challengeScore) this._renderChallengeScore(challengeScore);
+
+        // Exam mode: show Next or Submit button; hide the CLOSE button
+        if (this.challengeManager?.isExamMode) {
+            this.resultCloseBtn.style.display = 'none';
+            this.resultResetBtn.style.display = 'none';
+            const btn = this._getOrCreateExamActionBtn();
+            btn.disabled    = false;
+            btn.textContent = this.challengeManager.isLastQuestion ? 'Submit Exam' : 'Next Question →';
+            btn.onclick = this.challengeManager.isLastQuestion
+                ? () => { btn.disabled = true; this.callbacks.onSubmit(); }
+                : () => this.callbacks.onNext();
+        }
+
+        this.resultPanel.classList.add('visible');
+    }
+
+    /** Returns the exam action button, creating it inside #result-panel if absent. */
+    _getOrCreateExamActionBtn() {
+        let btn = document.getElementById('exam-action-btn');
+        if (!btn) {
+            btn = document.createElement('button');
+            btn.id        = 'exam-action-btn';
+            btn.className = 'btn';
+            btn.style.cssText = 'margin-top:12px;width:100%;padding:10px;font-size:1rem;';
+            this.resultPanel.appendChild(btn);
+        }
+        return btn;
+    }
+
+    /** Returns the save-status line, creating it inside #result-panel if absent. */
+    _getOrCreateLaunchFailLine() {
+        let line = document.getElementById('launch-fail-line');
+        if (!line) {
+            line = document.createElement('div');
+            line.id = 'launch-fail-line';
+            line.style.cssText =
+                'margin-top:10px;font-size:0.85rem;line-height:1.4;'
+                + 'text-align:center;color:#ffaa44;';
+            this.launchBtn.parentElement.appendChild(line);
+        }
+        return line;
+    }
+
+    /**
+     * Explain a launch that never left the ground, and hand the LAUNCH button
+     * back so the thrust can be raised and the launch retried.
+     *
+     * A rocket that correctly refuses to fly is otherwise indistinguishable
+     * from a module that has stopped responding: the only feedback is the
+     * launch-failed narration, which is silent on a muted laptop, and the
+     * button stays disabled until RESET is found. Both leave a student
+     * looking at a rocket that did nothing, with nothing to act on.
+     */
+    showLaunchFailed(thrust, weight) {
+        const line = this._getOrCreateLaunchFailLine();
+        line.textContent =
+            `Not enough thrust: ${thrust.toFixed(0)} N cannot lift `
+            + `${weight.toFixed(1)} N of weight. Raise thrust above `
+            + `${weight.toFixed(1)} N, or reduce the mass.`;
+        line.style.display = '';
+        this.launchBtn.disabled = false;
+    }
+
+    /** Clear the failed-launch explanation. */
+    clearLaunchFailed() {
+        const line = document.getElementById('launch-fail-line');
+        if (line) line.style.display = 'none';
+    }
+    _getOrCreateSaveLine() {
+        let line = document.getElementById('exam-save-line');
+        if (!line) {
+            line = document.createElement('div');
+            line.id = 'exam-save-line';
+            line.style.cssText =
+                'margin-top:10px;font-size:0.9rem;line-height:1.4;text-align:center;';
+            this.resultPanel.appendChild(line);
+        }
+        return line;
+    }
+
+    /**
+     * Show where the sitting stands with the server.
+     *
+     * The scorecard above this line is drawn from local state and renders
+     * identically whether or not the POST landed, so a failure has to be said
+     * out loud here — and paired with a retry the student can actually press.
+     *
+     * @param {'submitting'|'saved'|'unsaved'} status
+     * @param {string} message  server's reason, shown only when unsaved
+     */
+    showSaveStatus(status, message = '') {
+        const line = this._getOrCreateSaveLine();
+        const btn  = document.getElementById('exam-action-btn');
+
+        if (status === 'submitting') {
+            line.style.color = '#8899cc';
+            line.textContent = 'Saving scores…';
+            if (btn) {
+                btn.textContent = 'Saving…';
+                btn.disabled    = true;
+                btn.style.color = '';
+            }
+            return;
+        }
+
+        if (status === 'saved') {
+            line.style.color = '#44ff88';
+            line.textContent = 'Scores saved.';
+            if (btn) {
+                btn.textContent = 'Exam Submitted ✓';
+                btn.disabled    = true;
+                btn.style.color = '#44ff88';
+            }
+            return;
+        }
+
+        // unsaved — the case the student must not be able to miss
+        line.style.color = '#ff5544';
+        line.innerHTML =
+            '<strong>SCORES NOT SAVED</strong><br>' +
+            `${escapeHtml(message)}<br>` +
+            'Press RETRY SAVE, or tell your teacher.';
+        if (btn) {
+            btn.textContent = 'RETRY SAVE';
+            btn.disabled    = false;
+            btn.style.color = '';
+            // The retry path is the submit path — its guards make a repeat press
+            // after a success a no-op rather than a second sitting.
+            btn.onclick = () => this.callbacks.onSubmit();
+        }
+    }
+
+    /**
+     * Rebuilds the challenge card heading and targets after nextQuestion().
+     * Called by onNext in main.js.
+     */
+    refreshChallengeCard() {
+        if (!this.challengeManager?.isActive || !this.challengeCard) return;
+
+        // Update question progress heading
+        if (this.challengeManager.isExamMode && this._questionProgressEl) {
+            const { current, total } = this.challengeManager.questionProgress;
+            this._questionProgressEl.textContent = `Question ${current} of ${total}`;
+        }
+
+        // Re-render target list
+        if (this._challengeTargetsEl) {
+            this._challengeTargetsEl.innerHTML = this.challengeManager.targets
+                .map(t => `<div class="challenge-target">≥ ${t.value.toFixed(t.decimals)} ${t.unit} — ${t.label}</div>`)
+                .join('');
+        }
+    }
+
+    _renderChallengeScore(challengeScore) {
+        const rows = challengeScore.map(r => {
+            const icon  = r.passed ? '✓' : '✗';
+            const sign  = r.delta >= 0 ? '+' : '';
+            const delta = `(${sign}${r.delta.toFixed(r.decimals)})`;
+            return `
+                <div class="challenge-score-row ${r.passed ? 'passed' : 'failed'}">
+                    <span class="challenge-icon">${icon}</span>
+                    <span class="challenge-score-label">${r.label}</span>
+                    <span class="challenge-score-values">
+                        ${r.actual.toFixed(r.decimals)} / ${r.target.toFixed(r.decimals)} ${r.unit}
+                        <span class="challenge-delta">${delta}</span>
+                    </span>
+                </div>`;
+        }).join('');
+
+        this.challengeResults.innerHTML = `
+            <hr class="challenge-divider">
+            <p class="challenge-score-title">Challenge Score</p>
+            <div class="challenge-score-grid">${rows}</div>
+            <div class="attempt-display">Attempt ${this.challengeManager.attemptCount}</div>
+        `;
+    }
+
+    hideResults() {
+        this.resultPanel.classList.remove('visible');
+    }
+
+    /**
+     * Turn on the trial's visible limits: the badge, and the narrowed slider
+     * bounds. The bounds come from trialMode so the DOM and VR controls cannot
+     * disagree; the markup's own min/max stay at the full range, because the
+     * full build must ship unrestricted.
+     */
+    applyTrial({ ranges }) {
+        this.trialBadge.hidden = false;
+
+        this.thrustSlider.min = ranges.thrust.min;
+        this.thrustSlider.max = ranges.thrust.max;
+        this.massSlider.min   = ranges.mass.min;
+        this.massSlider.max   = ranges.mass.max;
+    }
+
+    /**
+     * Trial quota spent: lock LAUNCH and show the notice.
+     *
+     * Called again after every reset, because resetUI() re-enables LAUNCH
+     * unconditionally — without this, RESET would hand back another flight.
+     */
+    lockForTrialEnd(cta) {
+        this.launchBtn.disabled = true;
+
+        document.getElementById('trial-end-title').textContent = cta.title;
+        document.getElementById('trial-end-body').textContent  = cta.body;
+
+        const action = document.getElementById('trial-end-action');
+        action.textContent = cta.action;
+        // An empty href would navigate to the page itself, so a placeholder
+        // address renders as plain text rather than a dead link.
+        if (cta.href) {
+            action.href = cta.href;
+        } else {
+            action.removeAttribute('href');
+        }
+
+        this.trialEndPanel.hidden = false;
+    }
+
+    resetUI() {
+        this.graphData = [];
+        this.drawGraph();
+        this.launchBtn.disabled = false;
+        this.quizContainer.style.display = 'none';
+        this.quizOpts.forEach(opt => opt.style.background = '#00f');
+        this.hideResults();
+        this.challengeResults.innerHTML = '';
+        if (this.attemptCountEl && this.challengeManager) {
+            this.attemptCountEl.textContent = `Attempt: ${this.challengeManager.attemptCount}`;
+        }
+    }
+}

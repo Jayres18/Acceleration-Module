@@ -24,7 +24,7 @@ function challengeExtraH(challengeManager) {
 }
 
 export class VRResultPanel extends VRPanel {
-    constructor(onClose, challengeManager = null, onNext = null, onSubmit = null) {
+    constructor(onClose, challengeManager = null, onNext = null, onSubmit = null, onReset = null) {
         const extraH  = challengeExtraH(challengeManager);
         const canvasH = 428 + extraH;
         const worldH  = canvasH * (0.75 / 428);
@@ -49,8 +49,11 @@ export class VRResultPanel extends VRPanel {
             this.addButton('exam-action', label, 106, canvasH - 118, 300, 40,
                 () => this._handleExamAction(), {});
         } else {
-            // Free-play / URL-param mode: normal close button
-            this.addButton('close', 'CLOSE', 156, canvasH - 54, 200, 40, onClose, {});
+            // Free-play / URL-param mode: CLOSE dismisses the panel and leaves
+            // the rocket coasting; RESET puts it back on the pad. Two 190 px
+            // buttons with a 20 px gap, centred in the 512 px canvas.
+            this.addButton('close', 'CLOSE', 56,  canvasH - 54, 190, 40, onClose, {});
+            this.addButton('reset', 'RESET', 266, canvasH - 54, 190, 40, onReset, {});
         }
 
         this.render();

@@ -6,8 +6,8 @@ import { UIManager }       from './ui/UIManager.js';
 import { XRHandler }       from './xr/XRHandler.js';
 import { ParticleSystem }  from './scripts/ParticleSystem.js';
 import { ChallengeManager } from './ChallengeManager.js';
-import { ExamService }     from './api/ExamService.js';
 import { AudioManager }    from './audio/AudioManager.js';
+import { ExamService }     from './api/ExamService.js';
 import { captureExamLink, clearExamLink } from './examLink.js';
 
 /**
@@ -38,8 +38,8 @@ class RocketApp {
         this.audio        = new AudioManager();
 
         const callbacks = {
-            onThrustChange: val => this.physics.setParameters(this.physics.mass, val),
-            onMassChange:   val => this.physics.setParameters(val, this.physics.thrust),
+            onThrustChange: val => { this._thrust = val; this._applyParameters(); },
+            onMassChange:   val => { this._mass   = val; this._applyParameters(); },
             onTimeChange:   val => { this.timeScale = val; },
             onLaunch: () => {
                 if (this._pendingLaunch) return; // countdown beep already running
@@ -95,11 +95,12 @@ class RocketApp {
             onReset: () => {
                 this._cancelCountdown();
                 this.physics.reset();
+                this._applyParameters();
                 this.ui.resetUI();
                 this.ui.clearLaunchFailed();
                 this.scene.updateRocket(0, false);
                 this.particles.reset();
-                this._wasLaunched = false;
+                this._wasCoasting = false;
                 this._hideRocketCam();
                 this.xr.resetPanels();
                 this.challenge.reset();
@@ -112,12 +113,13 @@ class RocketApp {
                 this._cancelCountdown();
                 this.challenge.nextQuestion();
                 this.physics.reset();
+                this._applyParameters();
                 this.ui.resetUI();
                 this.ui.clearLaunchFailed();
                 this.ui.refreshChallengeCard();
                 this.scene.updateRocket(0, false);
                 this.particles.reset();
-                this._wasLaunched = false;
+                this._wasCoasting = false;
                 this._hideRocketCam();
                 this.xr.resetPanels();
                 this.xr.refreshHUD();
@@ -133,7 +135,7 @@ class RocketApp {
 
         this.clock        = new THREE.Clock();
         this.timeScale    = 1.0;
-        this._wasLaunched = false;
+        this._wasCoasting = false;
         this._pendingLaunch = false; // true while the countdown beep is playing
         this._countdownSfx  = null;  // the in-progress countdown beep element
         this._rocketCamActive = false;
@@ -149,8 +151,19 @@ class RocketApp {
         // LAUNCH on a fresh page, which reads as broken rather than as
         // instructive. Must stay in step with the thrust slider defaults in
         // index.html and VRControlPanel.
-        this.physics.setParameters(10, 150);
+        this._mass   = 10;
+        this._thrust = 150;
+        this._applyParameters();
         this.scene.render(() => this._animate());
+
+        // TEMPORARY DIAGNOSTIC — remove with dev/xrDiagnostics.js once the
+        // Quest 3 black screen is settled. Dynamically imported so it stays
+        // out of the main bundle and can only run when explicitly asked for.
+        if (new URLSearchParams(location.search).has('xrdebug')) {
+            import('./dev/xrDiagnostics.js')
+                .then(m => m.installXRDiagnostics(this.scene.renderer))
+                .catch(err => console.error('[xrdebug] failed to load', err));
+        }
 
         // Narration: intro → pre-launch (chained; browser may block until first gesture)
         this._playIntro();
@@ -300,32 +313,48 @@ class RocketApp {
         this.scene.rocketGroup.add(this.weightArrow);
     }
 
+    /**
+     * Push the configured mass and thrust into the engine.
+     *
+     * The app holds these rather than reading them back off PhysicsEngine,
+     * because `reset()` zeroes thrust and the engine also zeroes it at
+     * burnout. Without re-applying them, RESET leaves the engine at 0 N while
+     * the slider still reads 150, and the next launch dies on the pad with a
+     * "not enough thrust" notice the student has no way to act on.
+     */
+    _applyParameters() {
+        this.physics.setParameters(this._mass, this._thrust);
+    }
+
     // ── Animation loop ────────────────────────────────────────────────────
 
     _animate() {
         const delta = Math.min(this.clock.getDelta(), 0.1) * this.timeScale;
 
-        const wasLaunched = this._wasLaunched;
+        const wasCoasting = this._wasCoasting;
         this.physics.update(delta);
         const state = this.physics.getState();
-        this._wasLaunched = state.isLaunched;
+        this._wasCoasting = state.isCoasting;
 
         // Rocket-cam: show once the rocket is actually airborne.
         if (state.isLaunched && state.altitude > 0 && !this._rocketCamActive) {
             this._showRocketCam();
         }
 
-        // Detect flight end: launched → landed
-        if (wasLaunched && !state.isLaunched) {
+        // Detect flight end: the engine cutting out, not a landing. The rocket
+        // coasts on into space from here, so this is the last moment its
+        // numbers mean anything — PhysicsEngine freezes them on the same edge.
+        if (!wasCoasting && state.isCoasting) {
             const results        = this.physics.getResults();
             const challengeScore = this.challenge.isActive
                 ? this.challenge.evaluate(results)
                 : null;
             this.ui.showResults(results, challengeScore);
             this.xr.showResults(results, challengeScore, this.challenge.attemptCount);
-            // Stop engine loop on landing
+            // Stop engine loop at burnout. The chase cam deliberately stays
+            // up: the rocket is still flying, and that is the point. RESET and
+            // NEXT take it down.
             this.audio.stopLoop();
-            this._hideRocketCam();
         }
 
         // ── Audio: in-flight milestone narration ───────────────────────────
@@ -376,7 +405,9 @@ class RocketApp {
         // VR monitor: render the chase view into its texture before the main
         // (headset) render. Desktop uses the scissor inset below instead.
         if (this._rocketCamActive && this.scene.renderer.xr.isPresenting) {
+            this.scene.setChaseLight(true);
             this.xr.renderCameraView(this.scene.scene, this.scene.chaseCamera);
+            this.scene.setChaseLight(false);
         }
 
         this.scene.renderer.render(this.scene.scene, this.scene.camera);
@@ -395,6 +426,10 @@ class RocketApp {
         } else {
             this.thrustArrow.visible = false;
         }
+        // Gravity stops acting once the rocket is coasting, so the weight
+        // arrow goes with it — a downward force drawn next to an acceleration
+        // of 0.00 teaches the opposite of what this module is for.
+        this.weightArrow.visible = !state.isCoasting;
         this.weightArrow.setLength((this.physics.mass * 9.81) / 100);
         this.weightArrow.position.y = 0.75;
         this.thrustArrow.position.y = 0;
