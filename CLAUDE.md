@@ -43,11 +43,14 @@ This is a vanilla JS + Three.js educational simulation of Newton's Second Law (F
 | `scenes/MainScene.js` | Three.js renderer, camera, lights, star field, GLTF rocket. Exposes `rocketGroup`, `scene`, `renderer`, `camera`, and `updateRocket(altitude, isThrusting)`. |
 | `physics/PhysicsEngine.js` | Kinematic sim: `F_net = thrust + mass×gravity`, Euler integration, fuel burn at constant rate. Parameters locked during flight (`setParameters` is a no-op while `isLaunched`). |
 | `ui/UIManager.js` | DOM-based HUD + controls (desktop mode). Reads `#velocity-val`, `#accel-val`, etc. from `index.html`. Also owns the `<canvas>` acceleration graph. |
-| `xr/XRHandler.js` | WebXR session management, two controllers with ray-line visuals, raycasting against VR panel meshes, hand-tracking models. Hides `#ui-container` in XR and restores it on session end. |
-| `xr/VRPanel.js` | **Base class** for all VR panels. Each panel is a `THREE.PlaneGeometry` with a `CanvasTexture`. Registers buttons/sliders in canvas-pixel coordinates; converts UV hit from raycaster to canvas px to dispatch interactions. Subclasses override `render()` and call `super.render()` to mark the texture dirty. |
-| `xr/VRControlPanel.js` | VR sliders (thrust, mass, time scale) and LAUNCH/RESET buttons. Delegates to `callbacks`. |
-| `xr/VRHUDPanel.js` | 2×2 flight data grid (velocity, acceleration, altitude, fuel). |
-| `xr/VRGraphPanel.js` | Live acceleration graph + inline quiz. Quiz buttons are `disabled` until first launch. |
+| `xr/XRHandler.js` | WebXR session management: the **START XR** button (passthrough `immersive-ar` when offered, else `immersive-vr`), controller/hand rays with a dot cursor each, press-on-release raycasting, haptics and hover tick, the wrist menu (palm up / left X or Y), Back · Menu · Reset · Exit navigation and the Exit-to-portal flow. Hides `#ui-container` in XR and restores it on session end. All XR objects hang off one root that is hidden outside a session. |
+| `xr/VRPanel.js` | **Base class** for all VR panels: an opaque `CanvasTexture` plane at `PX_PER_M`, pivoted at its top edge. Buttons fire on select **end** if the ray is still on them; hover / pressed / disabled states; the shared nav bar; drawn icons. Layout in subclasses is written in metres via `m()`. |
+| `xr/VRMainPanel.js` | The main panel straight ahead, one panel with many screens: loading · start · howto · learn-0…3 · explore · quiz · exit. Owns the thrust/mass/time sliders and Launch. |
+| `xr/MenuNav.js` | The Back/Menu trail (pure, tested). |
+| `xr/VRHUDPanel.js` | Flight Data, to the right: readouts, acceleration graph, quick check, and challenge targets while a flight is graded. |
+| `xr/VRResultPanel.js` | Flight results; takes over the main panel's spot while open. Exam flights get Next/Submit + save status, everything else Fly Again. |
+| `xr/VRWristMenu.js` | Back · Menu · Reset · Exit at the wrist. |
+| `ui/tokens.js` | ParallaxED shared UI spec: colours, Inter, sizes in metres, and the placement table (converted from floor heights to the `local` space). `styles/main.css` mirrors the colours. |
 | `scripts/ParticleSystem.js` | Exhaust particles: 5 mesh clones per frame while thrusting, faded and removed by lifetime. |
 | `assetPath.js` | `asset(path)` — prefixes `import.meta.env.BASE_URL` onto anything loaded from `public/` at runtime. |
 | `examLink.js` | Captures `?user_id`/`?exam_id` into `sessionStorage` and strips them from the address bar; handles `?mode=explore`. Dependency-free and injectable, so it is tested under Node. |
@@ -67,7 +70,7 @@ A question whose properties yield no usable target **cannot be passed**: `[].eve
 
 ### VR panel interaction model
 
-`XRHandler` raycasts against the flat panel meshes each frame. The UV of the intersection is passed to the hit panel's `onHover`, `onSelectStart`, `onSelectMove`, or `onSelectEnd`. `VRPanel._uvToCanvas(uv)` converts the Three.js UV (bottom-left origin) to canvas pixels (top-left origin). Elements are registered as axis-aligned rectangles and checked in order — first match wins.
+`XRHandler` raycasts against the *visible* interactive panel meshes each frame; only the nearest hit counts. The UV of the intersection is passed to the hit panel's `onHover`, `onSelectStart`, `onSelectMove`, or `onSelectEnd(uv|null)` — a button is pressed on start and fires on end only if the ray is still on it. `VRPanel._uvToCanvas(uv)` converts the Three.js UV (bottom-left origin) to canvas pixels (top-left origin). Elements are registered as axis-aligned rectangles and checked in order — first match wins.
 
 ### Physics model
 
@@ -80,6 +83,10 @@ fuel -= burnRate * frame            (burnRate = 0.5 %/frame, not per-second)
 ```
 
 `deltaTime` is capped at 0.1 s in the animate loop to avoid tunnelling on slow frames. Parameters (mass, thrust) can only be changed before launch.
+
+### Activity modes and grading
+
+The XR start panel offers How to Use · Learn · Explore · Quiz (exam sittings only) · Narration. `RocketApp._mode` tracks it; a flight is graded (`_flightGraded`, fixed at launch) when a URL-param challenge is active, or in an exam sitting only in Quiz — so practice flights during a sitting are never recorded as an answer. The desktop has no start panel and is always graded as before.
 
 ### Desktop ↔ XR duality
 

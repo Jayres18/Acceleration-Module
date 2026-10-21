@@ -1,5 +1,6 @@
 // xr/VRCameraPanel.js
 import * as THREE from 'three';
+import { COLOR } from '../ui/tokens.js';
 
 // A non-interactive "monitor" panel that displays the rocket chase camera.
 // Unlike VRPanel (canvas-backed), it is backed by a WebGLRenderTarget that the
@@ -17,7 +18,7 @@ export class VRCameraPanel {
         // Border frame — a slightly larger dark plane behind the live view.
         const frame = new THREE.Mesh(
             new THREE.PlaneGeometry(worldW + 0.03, worldH + 0.03),
-            new THREE.MeshBasicMaterial({ color: 0x0a1030, side: THREE.DoubleSide })
+            new THREE.MeshBasicMaterial({ color: COLOR.panelBorder, side: THREE.DoubleSide, toneMapped: false })
         );
 
         // Live view — plane textured from the render target.

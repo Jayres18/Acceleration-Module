@@ -26,6 +26,11 @@ const SPACE_SPAN  = 170;
 const BASE_EXPOSURE  = 1.0;
 const CHASE_EXPOSURE = 2.4;
 
+// Where the pad stands on desktop. In XR it moves beside the main panel —
+// see setPadPosition.
+const DESKTOP_PAD = { x: 0, z: -2.5 };
+const GROUND_Y = -1.5;
+
 export class MainScene {
     constructor() {
         this.scene = new THREE.Scene();
@@ -35,6 +40,11 @@ export class MainScene {
         this.camera.position.set(0, 1.6, 5);
         this.camera.lookAt(0, 1.6, 0);
         this._tmpSize = new THREE.Vector2();
+        this._passthrough = false;
+
+        // Resolves once the rocket is on the pad (or has failed to load), so XR
+        // can show a Loading panel instead of an empty pad.
+        this.ready = new Promise(resolve => { this._resolveReady = resolve; });
 
         // Do NOT delete window.XRWebGLBinding here. It reads as a harmless way
         // to push three.js onto the older XRWebGLLayer path — it is guarded by
@@ -172,6 +182,28 @@ export class MainScene {
         }));
         this.scene.add(this.stars);
 
+        // Ground and pad, for desktop and full VR. Without them an immersive-vr
+        // session is a rocket hanging in a black void (B24). Hidden in
+        // passthrough, where the classroom floor is the ground.
+        this.ground = new THREE.Group();
+        const floor = new THREE.Mesh(
+            new THREE.CircleGeometry(60, 64),
+            new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.95, metalness: 0.05 })
+        );
+        floor.rotation.x = -Math.PI / 2;
+        floor.position.y = GROUND_Y;
+        floor.receiveShadow = true;
+        this.ground.add(floor);
+
+        this._pad = new THREE.Mesh(
+            new THREE.RingGeometry(0.75, 0.85, 48),
+            new THREE.MeshBasicMaterial({ color: 0xf97316, side: THREE.DoubleSide })
+        );
+        this._pad.rotation.x = -Math.PI / 2;
+        this._pad.position.set(DESKTOP_PAD.x, GROUND_Y + 0.005, DESKTOP_PAD.z);
+        this.ground.add(this._pad);
+        this.scene.add(this.ground);
+
         // // Ground — dark concrete-like plane
         // const ground = new THREE.Mesh(
         //     new THREE.PlaneGeometry(300, 300, 30, 30),
@@ -246,7 +278,7 @@ export class MainScene {
         const ROCKET_YAW = Math.PI * 3 / 2;
 
         this.rocketGroup = new THREE.Group();
-        this.rocketGroup.position.set(0, -1.45, -2.5);
+        this.rocketGroup.position.set(DESKTOP_PAD.x, -1.45, DESKTOP_PAD.z);
         this.scene.add(this.rocketGroup);
 
         // Chase camera — a three-quarter view from behind and just below the
@@ -299,6 +331,7 @@ export class MainScene {
         // examLink strips only user_id and exam_id, so the flag survives load.
         if (new URLSearchParams(location.search).has('procrocket')) {
             this._initProceduralRocket();
+            this._resolveReady();
             return;
         }
 
@@ -353,10 +386,12 @@ export class MainScene {
 
             // One model, one decode — release the decoder worker.
             dracoLoader.dispose();
+            this._resolveReady();
         }, undefined, err => {
             // Never fail silently: an unloaded rocket looks like an empty pad.
             console.error('[MainScene] rocket model failed to load', err);
             dracoLoader.dispose();
+            this._resolveReady();
         });
     }
 
@@ -423,7 +458,8 @@ export class MainScene {
         // it is the world changing, not the camera. Reset paths call
         // updateRocket(0, false), which puts t back to 0 and restores the pad.
         const t = THREE.MathUtils.clamp((altitude - SPACE_START) / SPACE_SPAN, 0, 1);
-        this.scene.fog.density = FOG_DENSITY * (1 - t);
+        // No fog over passthrough: it would tint the rocket against a real room.
+        this.scene.fog.density = this._passthrough ? 0 : FOG_DENSITY * (1 - t);
 
         // Desktop camera follow (ignored in XR — headset controls the camera)
         if (!this.renderer.xr.isPresenting) {
@@ -444,6 +480,33 @@ export class MainScene {
                 this.camera.lookAt(0, 1.6, 0);
             }
         }
+    }
+
+    /**
+     * Passthrough (an immersive-ar session): the room is the backdrop, so the
+     * star field and the ground go, and so does the fog. The stars in
+     * particular are fogged to near-black at their distance and would show as
+     * dark dots painted over the ceiling.
+     */
+    setPassthrough(on) {
+        this._passthrough = !!on;
+        this.stars.visible = !on;
+        this.ground.visible = !on;
+        if (on) this.scene.fog.density = 0;
+    }
+
+    /**
+     * Move the launch pad. XR puts it beside the main panel rather than behind
+     * it; null puts it back where the desktop camera expects it.
+     */
+    setPadPosition(x, z) {
+        if (x === null || x === undefined) ({ x, z } = DESKTOP_PAD);
+        this.rocketGroup.position.x = x;
+        this.rocketGroup.position.z = z;
+        this._padLight.position.x = x;
+        this._padLight.position.z = z;
+        this._pad.position.x = x;
+        this._pad.position.z = z;
     }
 
     /**

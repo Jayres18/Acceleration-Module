@@ -8,7 +8,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { captureExamLink, clearExamLink, isExploreVisit } from './examLink.js';
+import { captureExamLink, clearExamLink, isExploreVisit, portalReturnUrl } from './examLink.js';
 
 const PATH = '/acceleration/';
 
@@ -154,4 +154,50 @@ test('clearExamLink forgets the sitting, and survives disabled storage', () => {
     assert.equal(store.value, null);
 
     assert.doesNotThrow(() => clearExamLink({ store: throwingStore }));
+});
+
+// ── portalReturnUrl ─────────────────────────────────────────────────────
+
+const ORIGIN = 'https://parallaxed.local';
+
+test('Exit returns to the same-origin portal page that opened the module', () => {
+    const url = portalReturnUrl({
+        referrer: `${ORIGIN}/student-portal-explore?tab=physics`,
+        origin: ORIGIN,
+        modulePath: PATH,
+        isExam: false,
+    });
+    assert.equal(url, `${ORIGIN}/student-portal-explore?tab=physics`);
+});
+
+test('a cross-origin referrer is never followed', () => {
+    assert.equal(
+        portalReturnUrl({ referrer: 'https://evil.example/', origin: ORIGIN, modulePath: PATH, isExam: false }),
+        '/student-portal-explore',
+    );
+    assert.equal(
+        portalReturnUrl({ referrer: 'https://evil.example/', origin: ORIGIN, modulePath: PATH, isExam: true }),
+        '/student-portal-exam',
+    );
+});
+
+test('no referrer falls back by sitting type', () => {
+    assert.equal(portalReturnUrl({ referrer: '', origin: ORIGIN, modulePath: PATH, isExam: false }), '/student-portal-explore');
+    assert.equal(portalReturnUrl({ referrer: '', origin: ORIGIN, modulePath: PATH, isExam: true }), '/student-portal-exam');
+});
+
+test('the module itself is not a place to return to', () => {
+    // A reload inside the module can leave the module as its own referrer;
+    // "returning" there would only restart the simulation.
+    assert.equal(
+        portalReturnUrl({ referrer: `${ORIGIN}${PATH}?mode=explore`, origin: ORIGIN, modulePath: PATH, isExam: false }),
+        '/student-portal-explore',
+    );
+});
+
+test('a malformed referrer is ignored rather than thrown on', () => {
+    assert.equal(
+        portalReturnUrl({ referrer: 'not a url', origin: ORIGIN, modulePath: PATH, isExam: false }),
+        '/student-portal-explore',
+    );
 });

@@ -1,3 +1,5 @@
+import { COLOR } from './tokens.js';
+
 /**
  * The save-status line interpolates a message that came from the server, so it
  * is escaped rather than trusted — the exam payload is free-form JSON that
@@ -106,10 +108,10 @@ export class UIManager {
             opt.addEventListener('click', () => {
                 const isCorrect = opt.getAttribute('data-correct') === 'true';
                 if (isCorrect) {
-                    opt.style.background = 'green';
+                    opt.style.background = COLOR.success;
                     alert('Correct! Acceleration is inversely proportional to mass (a = F/m).');
                 } else {
-                    opt.style.background = 'red';
+                    opt.style.background = COLOR.error;
                     alert('Try again. Think about Newton\'s Second Law.');
                 }
             });
@@ -178,7 +180,7 @@ export class UIManager {
         const height = this.graphCanvas.height;
 
         ctx.clearRect(0, 0, width, height);
-        ctx.strokeStyle = '#00f';
+        ctx.strokeStyle = COLOR.accent;
         ctx.lineWidth   = 2;
         ctx.beginPath();
 
@@ -191,8 +193,8 @@ export class UIManager {
         }
         ctx.stroke();
 
-        ctx.fillStyle = '#fff';
-        ctx.font      = '10px Arial';
+        ctx.fillStyle = COLOR.textMuted;
+        ctx.font      = '10px Inter, system-ui, sans-serif';
         ctx.fillText('Accel vs Time', 5, 12);
     }
 
@@ -213,7 +215,7 @@ export class UIManager {
             this.resultResetBtn.style.display = 'none';
             const btn = this._getOrCreateExamActionBtn();
             btn.disabled    = false;
-            btn.textContent = this.challengeManager.isLastQuestion ? 'Submit Exam' : 'Next Question →';
+            btn.textContent = this.challengeManager.isLastQuestion ? 'Submit Exam' : 'Next Question';
             btn.onclick = this.challengeManager.isLastQuestion
                 ? () => { btn.disabled = true; this.callbacks.onSubmit(); }
                 : () => this.callbacks.onNext();
@@ -243,7 +245,7 @@ export class UIManager {
             line.id = 'launch-fail-line';
             line.style.cssText =
                 'margin-top:10px;font-size:0.85rem;line-height:1.4;'
-                + 'text-align:center;color:#ffaa44;';
+                + `text-align:center;color:${COLOR.error};`;
             this.launchBtn.parentElement.appendChild(line);
         }
         return line;
@@ -301,7 +303,7 @@ export class UIManager {
         const btn  = document.getElementById('exam-action-btn');
 
         if (status === 'submitting') {
-            line.style.color = '#8899cc';
+            line.style.color = COLOR.textSecondary;
             line.textContent = 'Saving scores…';
             if (btn) {
                 btn.textContent = 'Saving…';
@@ -312,24 +314,24 @@ export class UIManager {
         }
 
         if (status === 'saved') {
-            line.style.color = '#44ff88';
+            line.style.color = COLOR.success;
             line.textContent = 'Scores saved.';
             if (btn) {
-                btn.textContent = 'Exam Submitted ✓';
+                btn.textContent = 'Exam Submitted';
                 btn.disabled    = true;
-                btn.style.color = '#44ff88';
+                btn.style.color = COLOR.success;
             }
             return;
         }
 
         // unsaved — the case the student must not be able to miss
-        line.style.color = '#ff5544';
+        line.style.color = COLOR.error;
         line.innerHTML =
-            '<strong>SCORES NOT SAVED</strong><br>' +
+            '<strong>Scores not saved</strong><br>' +
             `${escapeHtml(message)}<br>` +
-            'Press RETRY SAVE, or tell your teacher.';
+            'Select Retry Save, or tell your teacher.';
         if (btn) {
-            btn.textContent = 'RETRY SAVE';
+            btn.textContent = 'Retry Save';
             btn.disabled    = false;
             btn.style.color = '';
             // The retry path is the submit path — its guards make a repeat press
@@ -392,7 +394,7 @@ export class UIManager {
         this.drawGraph();
         this.launchBtn.disabled = false;
         this.quizContainer.style.display = 'none';
-        this.quizOpts.forEach(opt => opt.style.background = '#00f');
+        this.quizOpts.forEach(opt => { opt.style.background = ''; opt.style.color = ''; });
         this.hideResults();
         this.challengeResults.innerHTML = '';
         if (this.attemptCountEl && this.challengeManager) {

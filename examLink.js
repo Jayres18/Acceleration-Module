@@ -123,3 +123,36 @@ export function clearExamLink({ store = globalThis.sessionStorage } = {}) {
         /* nothing to do — the tab is closing on it either way */
     }
 }
+
+/**
+ * Where the in-headset Exit button sends the student.
+ *
+ * Back to the portal page that opened the module, when that page is ours:
+ * `document.referrer` is only trusted when it is same-origin, and never when it
+ * is this module itself (a reload can leave the module as its own referrer, and
+ * "returning" there would just restart the simulation). Otherwise the portal
+ * page for the kind of visit this was.
+ *
+ * The exam flag has to be passed in rather than read from the URL — the ids are
+ * stripped from the address bar on load (see captureExamLink).
+ */
+export function portalReturnUrl({
+    referrer = globalThis.document?.referrer ?? '',
+    origin = globalThis.location?.origin ?? '',
+    modulePath = '/',
+    isExam = false,
+} = {}) {
+    const fallback = isExam ? '/student-portal-exam' : '/student-portal-explore';
+    if (!referrer) return fallback;
+
+    let ref;
+    try {
+        ref = new URL(referrer);
+    } catch {
+        return fallback;
+    }
+
+    if (ref.origin !== origin) return fallback;
+    if (ref.pathname.startsWith(modulePath)) return fallback;
+    return ref.href;
+}

@@ -1,9 +1,28 @@
+/* ParallaxED shared UI tokens — the same values as ui/tokens.js (B69). */
+:root {
+    --panel-bg: #1C1917;
+    --panel-border: #3A3431;
+    --surface: #292524;
+    --text-primary: #FAFAF9;
+    --text-secondary: #D6D3D1;
+    --text-muted: #A8A29E;
+    --accent: #F97316;
+    --accent-hover: #FB923C;
+    --accent-pressed: #EA580C;
+    --text-on-accent: #1C1917;
+    --danger: #DC2626;
+    --success: #22C55E;
+    --error: #EF4444;
+    --disabled-bg: rgba(41, 37, 36, 0.5);
+    --disabled-text: #78716C;
+}
+
 body {
     margin: 0;
     padding: 0;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-family: Inter, system-ui, sans-serif;
     background-color: #000;
-    color: #fff;
+    color: var(--text-primary);
     overflow: hidden;
 }
 
@@ -25,10 +44,10 @@ body {
     display: flex;
     flex-shrink: 0;
     gap: 20px;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--panel-bg);
     padding: 10px 20px;
     border-radius: 10px;
-    border: 1px solid #00f;
+    border: 2px solid var(--panel-border);
     align-self: flex-start;
     pointer-events: auto;
 }
@@ -39,23 +58,26 @@ body {
     flex-direction: column;
     gap: 10px;
     /* Never taller than the viewport (less #ui-container's 20px padding). The
-       stack holds the cam, the HUD and the info panel, which together want
-       ~680px once the quiz expands — more than a 1366x768 laptop has after
-       browser chrome. Without this the quiz buttons go off-screen, and they
-       are exam-scoring controls. */
+       stack holds the HUD and the info panel, which together want ~540px once
+       the quiz expands — more than a 1366x768 laptop has after browser chrome.
+       Without this the quiz buttons go off-screen, and they are exam-scoring
+       controls. */
     max-height: calc(100vh - 40px);
 }
 
+/* Top-right, out of the flow. It used to sit at the top of the left stack and
+   appear on liftoff, which pushed the HUD readouts down 145px mid-flight (B44). */
 #rocket-cam {
     display: none;            /* shown on liftoff */
-    flex-shrink: 0;           /* hold 16:9 when the stack is squeezed */
+    position: absolute;
+    top: 20px;
+    right: 20px;
     width: 240px;
     height: 135px;           /* 16:9 */
-    border: 1px solid #00f;
+    border: 2px solid var(--panel-border);
     border-radius: 10px;
     background: transparent;  /* the WebGL chase view shows through */
     box-sizing: border-box;
-    position: relative;
     pointer-events: none;
 }
 
@@ -64,22 +86,23 @@ body {
     top: 4px;
     left: 8px;
     font-size: 0.7rem;
-    font-weight: bold;
-    color: #00f;
+    font-weight: 700;
+    color: var(--accent);
     letter-spacing: 0.1em;
     text-shadow: 0 0 4px #000;
 }
 
 .hud-item {
     font-size: 1.2rem;
-    font-weight: bold;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
 }
 
 .panel {
-    background: rgba(0, 0, 0, 0.7);
+    background: var(--panel-bg);
     padding: 15px;
     border-radius: 10px;
-    border: 1px solid #00f;
+    border: 2px solid var(--panel-border);
     pointer-events: auto;
     max-width: 300px;
 }
@@ -95,9 +118,7 @@ body {
     bottom: 20px;
 }
 
-/* In the top-left stack, below the HUD. Not absolutely positioned: the stack
-   grows by the height of #rocket-cam when that appears on liftoff, so a pinned
-   top offset overlapped the HUD for the whole flight. */
+/* In the top-left stack, below the HUD. */
 #info-panel {
     align-self: flex-start;
     /* Absorbs the squeeze: min-height:0 lets a flex item shrink below its
@@ -109,7 +130,7 @@ body {
        horizontal one. */
     overflow-x: hidden;
     scrollbar-width: thin;
-    scrollbar-color: #00f transparent;
+    scrollbar-color: var(--panel-border) transparent;
 }
 
 #info-panel::-webkit-scrollbar {
@@ -121,15 +142,20 @@ body {
 }
 
 #info-panel::-webkit-scrollbar-thumb {
-    background: #00f;
+    background: var(--panel-border);
     border-radius: 4px;
 }
 
 h3 {
     margin-top: 0;
-    color: #00f;
-    text-transform: uppercase;
-    font-size: 1rem;
+    color: var(--text-primary);
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+
+#info-panel p,
+.control-group label {
+    color: var(--text-secondary);
 }
 
 .control-group {
@@ -138,34 +164,98 @@ h3 {
 
 input[type="range"] {
     width: 100%;
+    accent-color: var(--accent);
 }
 
 button {
     width: 100%;
     padding: 10px;
     margin-top: 10px;
-    background: #00f;
-    color: #fff;
+    background: var(--accent);
+    color: var(--text-on-accent);
     border: none;
-    border-radius: 5px;
+    border-radius: 6px;
     cursor: pointer;
-    font-weight: bold;
+    font-family: inherit;
+    font-weight: 600;
+    font-size: 0.95rem;
 }
 
 button:hover {
-    background: #0055ff;
+    background: var(--accent-hover);
 }
 
-#reset-btn {
-    background: #444;
+button:active {
+    background: var(--accent-pressed);
+}
+
+/* A real disabled state (B44): LAUNCH used to look identical during a flight,
+   when it ignores presses. */
+button:disabled,
+button:disabled:hover {
+    background: var(--disabled-bg);
+    color: var(--disabled-text);
+    border-color: transparent;
+    cursor: not-allowed;
+}
+
+/* Secondary buttons: surface, not accent — accent is for the primary action. */
+#reset-btn,
+#result-close-btn,
+.quiz-opt {
+    background: var(--surface);
+    color: var(--text-primary);
+    border: 2px solid var(--panel-border);
+}
+
+#reset-btn:hover,
+#result-close-btn:hover,
+.quiz-opt:hover {
+    background: var(--surface);
+    border-color: var(--accent);
+}
+
+/* START XR — the one entry button, same label in every module (B72). Bottom
+   centre, between the info panel and the controls, so it covers neither. */
+#xr-button {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: auto;
+    margin: 0;
+    padding: 12px 32px;
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    z-index: 50;
+}
+
+#xr-unavailable {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 10px 18px;
+    background: var(--panel-bg);
+    border: 2px solid var(--panel-border);
+    border-radius: 8px;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    text-align: center;
+    max-width: calc(100vw - 720px);
+    min-width: 200px;
+    box-sizing: border-box;
+    z-index: 50;
 }
 
 #graph-container {
     width: 100%;
     height: 150px;
-    background: #111;
+    background: #0C0A09;
     margin-top: 10px;
-    border: 1px solid #333;
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
     /* No global border-box reset here, so width:100% plus the 1px border
        overflows the panel by 2px and makes it scroll sideways. */
     box-sizing: border-box;
@@ -193,22 +283,20 @@ canvas#physics-graph {
 }
 
 .result-content {
-    background: rgba(4, 8, 30, 0.97);
-    border: 2px solid #2255ee;
+    background: var(--panel-bg);
+    border: 2px solid var(--panel-border);
     border-radius: 14px;
     padding: 28px 36px;
     min-width: 340px;
     max-width: 420px;
     width: 90%;
-    box-shadow: 0 0 40px rgba(34, 85, 238, 0.4);
 }
 
 .result-content h2 {
     margin: 0 0 20px;
-    color: #4499ff;
-    font-size: 1.1rem;
+    color: var(--text-primary);
+    font-size: 1.25rem;
     text-align: center;
-    letter-spacing: 0.12em;
 }
 
 .result-grid {
@@ -222,24 +310,24 @@ canvas#physics-graph {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
-    border-bottom: 1px solid rgba(34, 85, 238, 0.2);
+    border-bottom: 1px solid var(--panel-border);
     padding-bottom: 8px;
 }
 
 .result-label {
-    color: #8899cc;
-    font-size: 0.85rem;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
 }
 
 .result-value {
-    color: #ffffff;
+    color: var(--text-primary);
     font-size: 1rem;
-    font-weight: bold;
-    font-family: 'Courier New', monospace;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
 }
 
-/* CLOSE dismisses the panel and leaves the rocket coasting; RESET is the one
-   that puts it back on the pad. Two buttons side by side, so the global
+/* Close dismisses the panel and leaves the rocket coasting; Fly Again is the
+   one that puts it back on the pad. Two buttons side by side, so the global
    `button { width: 100% }` has to be overridden or they overflow the row. */
 .result-actions {
     display: flex;
@@ -253,45 +341,27 @@ canvas#physics-graph {
     margin-top: 0;
 }
 
-#result-close-btn {
-    background: #1144cc;
-    margin-top: 0;
-}
-
-#result-close-btn:hover {
-    background: #2277ff;
-}
-
-#result-reset-btn {
-    background: #444;
-}
-
-#result-reset-btn:hover {
-    background: #666;
-}
-
 /* ── Challenge Card ─────────────────────────────────────────────── */
 
 #challenge-card {
-    border-color: #ffaa22;
     align-self: flex-end;
     margin-bottom: 10px;
 }
 
 #challenge-card h3 {
-    color: #ffaa22;
+    color: var(--accent);
 }
 
 .challenge-target {
     font-size: 0.85rem;
-    color: #ffcc66;
+    color: var(--text-primary);
     padding: 4px 0;
-    border-bottom: 1px solid rgba(255, 170, 34, 0.2);
+    border-bottom: 1px solid var(--panel-border);
 }
 
 #attempt-count {
     font-size: 0.8rem;
-    color: #888899;
+    color: var(--text-muted);
     margin-top: 8px;
 }
 
@@ -303,16 +373,15 @@ canvas#physics-graph {
 
 .challenge-divider {
     border: none;
-    border-top: 1px solid rgba(255, 170, 34, 0.3);
+    border-top: 1px solid var(--panel-border);
     margin: 0 0 10px;
 }
 
 .challenge-score-title {
-    color: #ffaa22;
+    color: var(--accent);
     text-align: center;
     font-size: 0.9rem;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
+    font-weight: 700;
     margin: 0 0 10px;
 }
 
@@ -328,32 +397,32 @@ canvas#physics-graph {
     align-items: center;
     gap: 8px;
     padding: 6px 0;
-    border-bottom: 1px solid rgba(34, 85, 238, 0.15);
+    border-bottom: 1px solid var(--panel-border);
     font-size: 0.82rem;
 }
 
-.challenge-score-row.passed .challenge-icon { color: #44ff88; font-weight: bold; }
-.challenge-score-row.failed .challenge-icon { color: #ff5544; font-weight: bold; }
+.challenge-score-row.passed .challenge-icon { color: var(--success); font-weight: 700; }
+.challenge-score-row.failed .challenge-icon { color: var(--error); font-weight: 700; }
 
 .challenge-score-label {
     flex: 1;
-    color: #8899cc;
+    color: var(--text-secondary);
 }
 
 .challenge-score-values {
-    color: #ffffff;
-    font-family: 'Courier New', monospace;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
     font-size: 0.8rem;
 }
 
 .challenge-delta {
-    color: #6677aa;
+    color: var(--text-muted);
     font-size: 0.75rem;
 }
 
 .attempt-display {
     text-align: center;
-    color: #6677aa;
+    color: var(--text-muted);
     font-size: 0.8rem;
     margin-top: 4px;
 }

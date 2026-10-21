@@ -8,10 +8,11 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test ChallengeManager.test.js examLink.test.js physics/PhysicsEngine.test.js scenes/MainScene.test.js xr/XRHandler.test.js",
+    "test": "node --test ChallengeManager.test.js examLink.test.js physics/PhysicsEngine.test.js scenes/MainScene.test.js xr/XRHandler.test.js xr/MenuNav.test.js",
     "check:exams": "node dev/checkExamTargets.js"
   },
   "dependencies": {
+    "@fontsource/inter": "^5.2.8",
     "three": "^0.184.0"
   },
   "devDependencies": {

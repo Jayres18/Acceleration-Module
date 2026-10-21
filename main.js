@@ -1,4 +1,9 @@
 // main.js
+// Inter, vendored rather than fetched — a classroom LAN has no route out. The
+// VR panels draw with it too (XRHandler._loadFonts).
+import '@fontsource/inter/latin-400.css';
+import '@fontsource/inter/latin-600.css';
+import '@fontsource/inter/latin-700.css';
 import * as THREE from 'three';
 import { MainScene }       from './scenes/MainScene.js';
 import { PhysicsEngine }   from './physics/PhysicsEngine.js';
@@ -46,6 +51,11 @@ class RocketApp {
                 this._pendingLaunch = true;
                 this.ui.launchBtn.disabled = true;
                 this.ui.clearLaunchFailed();
+                this.xr.setLaunchEnabled(false);
+                this.xr.clearLaunchFailed();
+                // Whether this flight is graded is settled at launch — switching
+                // screens mid-flight must not change what it counts for.
+                this._flightGraded = this._isGraded();
                 // SFX: launch button click (immediate press feedback)
                 this.audio.playSfx('sfx-launch-click');
                 // Play the countdown beep, then launch once it finishes.
@@ -80,8 +90,7 @@ class RocketApp {
                             this.physics.launchMass * this.physics.gravity,
                         );
                         this.ui.showLaunchFailed(this.physics.launchForce, weight);
-                        this.xr.controlPanel.setDisabled('launch', false);
-                        this.xr.controlPanel.render();
+                        this.xr.showLaunchFailed(this.physics.launchForce, weight);
                     }
                     // Narration: countdown → liftoff, or the failed-launch
                     // explanation when thrust can't beat gravity.
@@ -130,8 +139,29 @@ class RocketApp {
             onSubmit: () => this._submitScores(),
         };
 
+        // Which activity the student is in: 'learn' | 'explore' | 'quiz'. The
+        // desktop has no start panel, so it is always whatever the visit is —
+        // a sitting is graded there exactly as it always was.
+        this._defaultMode = this.challenge.isExamMode ? 'quiz' : 'explore';
+        this._mode = this._defaultMode;
+        this._flightGraded = false;
+
         this.ui  = new UIManager(callbacks, this.challenge);
-        this.xr  = new XRHandler(this.scene.renderer, this.scene.scene, callbacks, this.challenge);
+        this.xr  = new XRHandler(this.scene.renderer, this.scene.scene, callbacks, this.challenge, {
+            isExam:       this.challenge.isExamMode,
+            cameFromExam: examId !== null,
+            ready:        this.scene.ready,
+            onModeChange: mode => this._setMode(mode),
+            toggleNarration: () => {
+                this.audio.setNarration(!this.audio.narrationOn);
+                return this.audio.narrationOn;
+            },
+            // Leaving now loses the sitting: scores go up in one POST at the end.
+            examUnsaved:  () => this.challenge.isExamMode && this._saveStatus !== SAVE.SAVED,
+            setPadPosition: (x, z) => this.scene.setPadPosition(x, z),
+            setPassthrough: on => this.scene.setPassthrough(on),
+        });
+        this.xr.setShowTargets(this._isGraded());
 
         this.clock        = new THREE.Clock();
         this.timeScale    = 1.0;
@@ -150,7 +180,7 @@ class RocketApp {
         // weight makes the module do nothing at all when a student presses
         // LAUNCH on a fresh page, which reads as broken rather than as
         // instructive. Must stay in step with the thrust slider defaults in
-        // index.html and VRControlPanel.
+        // index.html and VRMainPanel.
         this._mass   = 10;
         this._thrust = 150;
         this._applyParameters();
@@ -171,6 +201,27 @@ class RocketApp {
         // Entering VR is a user gesture, so audio the browser blocked on the
         // initial load is allowed here — (re)play the intro once VR starts.
         this.scene.renderer.xr.addEventListener('sessionstart', () => this._playIntro());
+    }
+
+    // ── Activity mode ─────────────────────────────────────────────────────
+
+    /** Called by XRHandler as the student moves between Learn, Explore and Quiz; null when XR ends. */
+    _setMode(mode) {
+        this._mode = mode ?? this._defaultMode;
+        this.xr.setShowTargets(this._isGraded());
+    }
+
+    /**
+     * Is a flight launched now graded against the challenge?
+     *
+     * A target set in the URL is a practice challenge and always is. An exam
+     * sitting only grades in Quiz: Learn and Explore are open to the student
+     * during the sitting too, and ChallengeManager records the first graded
+     * flight of a question as its answer — a practice launch must not be it.
+     */
+    _isGraded() {
+        if (!this.challenge.isActive) return false;
+        return !this.challenge.isExamMode || this._mode === 'quiz';
     }
 
     // ── Narration ─────────────────────────────────────────────────────────
@@ -346,7 +397,7 @@ class RocketApp {
         // numbers mean anything — PhysicsEngine freezes them on the same edge.
         if (!wasCoasting && state.isCoasting) {
             const results        = this.physics.getResults();
-            const challengeScore = this.challenge.isActive
+            const challengeScore = this._flightGraded
                 ? this.challenge.evaluate(results)
                 : null;
             this.ui.showResults(results, challengeScore);

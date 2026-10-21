@@ -36,6 +36,22 @@ export class AudioManager {
         this._currentNarration = null; // currently-playing narration element
         this._loopSfx          = null; // currently-looping SFX element
         this._played           = new Set(); // fired event keys this flight
+        this._narrationOn      = true;      // the start panel's Narration toggle
+    }
+
+    // ── Narration toggle ──────────────────────────────────────────────────
+
+    get narrationOn() { return this._narrationOn; }
+
+    /** Narration on or off. SFX are unaffected. Turning it off stops the current clip. */
+    setNarration(on) {
+        this._narrationOn = !!on;
+        if (!on && this._currentNarration) {
+            this._currentNarration.pause();
+            this._currentNarration.currentTime = 0;
+            this._currentNarration.onended = null;
+            this._currentNarration = null;
+        }
     }
 
     // ── Narration ──────────────────────────────────────────────────────────
@@ -43,7 +59,8 @@ export class AudioManager {
     /**
      * Stop any current narration and play a new clip.
      * Marks the key as played so hasPlayed() returns true.
-     * Returns the HTMLAudioElement so callers can chain `.onended`.
+     * Returns the HTMLAudioElement so callers can chain `.onended`, or null
+     * while narration is switched off.
      */
     play(eventKey) {
         // Stop and rewind whatever was playing
@@ -59,7 +76,10 @@ export class AudioManager {
             return null;
         }
 
+        // Marked as played even when muted, so a milestone that passed in
+        // silence is not announced late once narration is switched back on.
         this._played.add(eventKey);
+        if (!this._narrationOn) return null;
         audio.currentTime = 0;
         audio.onended = null;
         this._currentNarration = audio;
